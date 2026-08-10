@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__.'/../src/auth.php';
-logout_user();
-header('Location:/login.php');
+require_once __DIR__ . '/../src/auth.php';
+logout_admin();
+header('Location: /login.php');
 exit;

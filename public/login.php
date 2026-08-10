@@ -1,22 +1,25 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__.'/../src/auth.php';
+require_once __DIR__ . '/../src/auth.php';
 
-if(is_logged_in()){
-    header('Location:'.post_login_redirect());
+if (is_logged_in()) {
+    header('Location: /index.php');
     exit;
 }
 
-$error=null;
+$error = null;
 
-if($_SERVER['REQUEST_METHOD']==='POST'){
-    if(attempt_login(trim($_POST['login'] ?? ''),$_POST['password'] ?? '')){
-        header('Location:'.post_login_redirect());
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user = trim($_POST['user'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if (attempt_login($user, $password)) {
+        header('Location: /index.php');
         exit;
     }
 
-    $error='Usuário ou senha inválidos.';
+    $error = 'Usuário ou senha inválidos.';
 }
 ?>
 <!doctype html>
@@ -29,33 +32,26 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 </head>
 <body>
 <div class="login-page">
-<form class="login-box" method="post">
-    <div style="display:flex;gap:12px;align-items:center;margin-bottom:22px">
-        <div class="brand-mark">RS</div>
-        <div>
-            <h1>RS English</h1>
-            <div class="label">AI English Coach</div>
+    <form class="login-box" method="post">
+        <h1>RS English</h1>
+        <p class="label">Painel administrativo</p>
+
+        <?php if ($error): ?>
+            <div class="error"><?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
+
+        <div class="form-row">
+            <label>Usuário</label>
+            <input name="user" required>
         </div>
-    </div>
 
-    <?php if($error): ?>
-        <div class="error"><?= htmlspecialchars($error) ?></div>
-    <?php endif; ?>
+        <div class="form-row">
+            <label>Senha</label>
+            <input type="password" name="password" required>
+        </div>
 
-    <div class="form-row">
-        <label>Usuário, e-mail ou telefone</label>
-        <input name="login" required autofocus>
-    </div>
-
-    <div class="form-row">
-        <label>Senha</label>
-        <input type="password" name="password" required>
-    </div>
-
-    <button class="btn btn-primary" style="width:100%" type="submit">
-        Entrar
-    </button>
-</form>
+        <button type="submit">Entrar</button>
+    </form>
 </div>
 </body>
 </html>
