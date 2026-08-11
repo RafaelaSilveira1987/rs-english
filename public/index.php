@@ -1,70 +1,7 @@
 <?php
-declare(strict_types=1);
-
-require_once __DIR__ . '/../src/db.php';
-require_once __DIR__ . '/../src/auth.php';
-require_login();
-
-$pdo = db();
-
-$stats = [
-    'students' => (int)$pdo->query("SELECT COUNT(*) FROM students WHERE status = 'active'")->fetchColumn(),
-    'sessions' => (int)$pdo->query("SELECT COUNT(*) FROM sessions")->fetchColumn(),
-    'errors' => (int)$pdo->query("SELECT COUNT(*) FROM student_errors WHERE status = 'learning'")->fetchColumn(),
-    'words' => (int)$pdo->query("SELECT COUNT(*) FROM student_vocabulary WHERE status IN ('learning','mastered')")->fetchColumn(),
-];
-
-$recent = $pdo->query("
-    SELECT
-        s.id,
-        s.name,
-        s.phone,
-        COALESCE(sp.overall_level, 'A1') AS overall_level,
-        sp.last_study_at,
-        COALESCE(sp.grammar_score,0) AS grammar_score,
-        COALESCE(sp.vocabulary_score,0) AS vocabulary_score
-    FROM students s
-    LEFT JOIN student_profiles sp ON sp.student_id = s.id
-    WHERE s.status = 'active'
-    ORDER BY COALESCE(sp.last_study_at, s.created_at) DESC
-    LIMIT 10
-")->fetchAll();
-
-$pageTitle = 'Dashboard';
-require __DIR__ . '/../templates/header.php';
-?>
-
-<section class="cards">
-    <div class="card"><div class="label">Alunos ativos</div><div class="metric"><?= $stats['students'] ?></div></div>
-    <div class="card"><div class="label">Sessões</div><div class="metric"><?= $stats['sessions'] ?></div></div>
-    <div class="card"><div class="label">Erros em revisão</div><div class="metric"><?= $stats['errors'] ?></div></div>
-    <div class="card"><div class="label">Palavras acompanhadas</div><div class="metric"><?= $stats['words'] ?></div></div>
-</section>
-
-<section class="panel">
-    <h2>Alunos recentes</h2>
-    <table>
-        <thead>
-        <tr>
-            <th>Aluno</th>
-            <th>Nível</th>
-            <th>Grammar</th>
-            <th>Vocabulary</th>
-            <th>Último estudo</th>
-        </tr>
-        </thead>
-        <tbody>
-        <?php foreach ($recent as $student): ?>
-            <tr>
-                <td><a href="/student.php?id=<?= urlencode($student['id']) ?>"><strong><?= htmlspecialchars($student['name']) ?></strong></a><br><span class="label"><?= htmlspecialchars($student['phone'] ?? '') ?></span></td>
-                <td><span class="badge"><?= htmlspecialchars($student['overall_level']) ?></span></td>
-                <td><?= number_format((float)$student['grammar_score'], 0) ?>%</td>
-                <td><?= number_format((float)$student['vocabulary_score'], 0) ?>%</td>
-                <td><?= $student['last_study_at'] ? htmlspecialchars(date('d/m/Y H:i', strtotime($student['last_study_at']))) : '-' ?></td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-</section>
-
-<?php require __DIR__ . '/../templates/footer.php'; ?>
+declare(strict_types=1);require_once __DIR__.'/../src/db.php';require_once __DIR__.'/../src/auth.php';require_login();$pdo=db();
+$stats=['students'=>(int)$pdo->query("SELECT COUNT(*) FROM students WHERE status='active'")->fetchColumn(),'sessions'=>(int)$pdo->query("SELECT COUNT(*) FROM sessions")->fetchColumn(),'errors_due'=>(int)$pdo->query("SELECT COUNT(*) FROM student_errors WHERE status='learning' AND (next_review_at IS NULL OR next_review_at<=NOW())")->fetchColumn(),'words_due'=>(int)$pdo->query("SELECT COUNT(*) FROM student_vocabulary WHERE status IN ('learning','review') AND (next_review_at IS NULL OR next_review_at<=NOW())")->fetchColumn()];
+$recent=$pdo->query("SELECT s.id,s.name,s.phone,COALESCE(sp.overall_level,'A1') overall_level,COALESCE(sp.xp,0) xp,COALESCE(sp.grammar_score,0) grammar_score,COALESCE(sp.vocabulary_score,0) vocabulary_score,sp.last_study_at,(SELECT COUNT(*) FROM student_errors se WHERE se.student_id=s.id AND se.status='learning' AND (se.next_review_at IS NULL OR se.next_review_at<=NOW())) errors_due,(SELECT COUNT(*) FROM student_vocabulary sv WHERE sv.student_id=s.id AND sv.status IN ('learning','review') AND (sv.next_review_at IS NULL OR sv.next_review_at<=NOW())) vocab_due FROM students s LEFT JOIN student_profiles sp ON sp.student_id=s.id WHERE s.status='active' ORDER BY COALESCE(sp.last_study_at,s.created_at) DESC LIMIT 12")->fetchAll();$pageTitle='Dashboard';require __DIR__.'/../templates/header.php';?>
+<section class="cards"><div class="card"><div class="label">Alunos ativos</div><div class="metric"><?=$stats['students']?></div><div class="metric-sub">Base atual da plataforma</div></div><div class="card"><div class="label">Sessões realizadas</div><div class="metric"><?=$stats['sessions']?></div><div class="metric-sub">Conversas e avaliações registradas</div></div><div class="card"><div class="label">Revisões gramaticais</div><div class="metric"><?=$stats['errors_due']?></div><div class="metric-sub">Erros que precisam reaparecer</div></div><div class="card"><div class="label">Palavras para revisar</div><div class="metric"><?=$stats['words_due']?></div><div class="metric-sub">Repetição espaçada pendente</div></div></section>
+<section class="panel"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><h2 style="margin-bottom:4px">Alunos recentes</h2><div class="label">Evolução e pendências.</div></div><a class="btn btn-secondary" href="/students.php">Ver todos</a></div><div class="table-wrap"><table><thead><tr><th>Aluno</th><th>Nível</th><th>Grammar</th><th>Vocabulary</th><th>Revisões</th><th>XP</th><th>Último estudo</th></tr></thead><tbody><?php foreach($recent as $s):?><tr><td><a href="/student.php?id=<?=urlencode($s['id'])?>"><strong><?=htmlspecialchars($s['name'])?></strong></a><div class="label"><?=htmlspecialchars($s['phone']??'')?></div></td><td><span class="badge"><?=htmlspecialchars($s['overall_level'])?></span></td><td><?=number_format((float)$s['grammar_score'],0)?>%</td><td><?=number_format((float)$s['vocabulary_score'],0)?>%</td><td><span class="badge warning"><?=((int)$s['errors_due']+(int)$s['vocab_due'])?> pend.</span></td><td><strong><?=(int)$s['xp']?></strong></td><td><?=$s['last_study_at']?date('d/m/Y H:i',strtotime($s['last_study_at'])):'-'?></td></tr><?php endforeach;?></tbody></table></div></section>
+<?php require __DIR__.'/../templates/footer.php';?>

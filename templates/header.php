@@ -1,41 +1,6 @@
 <?php
-require_once __DIR__ . '/../src/auth.php';
-require_login();
-$pageTitle = $pageTitle ?? 'RS English';
+require_once __DIR__ . '/../src/auth.php'; require_login();
+$pageTitle=$pageTitle??'RS English'; $currentPage=basename($_SERVER['PHP_SELF']);
+function nav_active(string $f):string{global $currentPage;return $currentPage===$f?'active':'';}
 ?>
-<!doctype html>
-<html lang="pt-BR">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title><?= htmlspecialchars($pageTitle) ?> - RS English</title>
-    <link rel="stylesheet" href="/assets/css/app.css">
-</head>
-<body>
-<div class="layout">
-    <aside class="sidebar">
-        <div class="brand">
-            <div class="brand-mark">RS</div>
-            <div>
-                <strong>RS English</strong>
-                <small>English Coach</small>
-            </div>
-        </div>
-
-        <nav>
-            <a href="/index.php">Dashboard</a>
-            <a href="/students.php">Alunos</a>
-        </nav>
-
-        <div class="sidebar-footer">
-            <a href="/logout.php">Sair</a>
-        </div>
-    </aside>
-
-    <main class="main">
-        <header class="topbar">
-            <div>
-                <h1><?= htmlspecialchars($pageTitle) ?></h1>
-                <p>Acompanhamento pedagógico e evolução</p>
-            </div>
-        </header>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?=htmlspecialchars($pageTitle)?> - RS English</title><link rel="stylesheet" href="/assets/css/app.css"></head><body><div class="layout"><aside class="sidebar"><div class="brand"><div class="brand-mark">RS</div><div><strong>RS English</strong><small>AI English Coach</small></div></div><div class="nav-section">Visão geral</div><nav><a class="<?=nav_active('index.php')?>" href="/index.php"><span class="nav-dot"></span>Dashboard</a><a class="<?=$currentPage==='students.php'||$currentPage==='student.php'?'active':''?>" href="/students.php"><span class="nav-dot"></span>Alunos</a></nav><div class="nav-section">Em breve</div><nav><a href="javascript:void(0)"><span class="nav-dot"></span>Atividades</a><a href="javascript:void(0)"><span class="nav-dot"></span>Conteúdos</a><a href="javascript:void(0)"><span class="nav-dot"></span>Relatórios</a></nav><div class="sidebar-footer"><a href="/logout.php"><span class="nav-dot"></span>Sair</a></div></aside><main class="main"><header class="topbar"><div style="display:flex;gap:12px;align-items:center"><button class="mobile-menu" data-mobile-menu>☰</button><div><h1><?=htmlspecialchars($pageTitle)?></h1><p>Aprendizado contínuo, progresso mensurável.</p></div></div><span class="badge success">● Sistema online</span></header>

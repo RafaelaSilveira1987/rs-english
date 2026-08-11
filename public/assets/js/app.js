@@ -1,6 +1,1 @@
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-progress]').forEach(el => {
-        const value = Math.max(0, Math.min(100, Number(el.dataset.progress || 0)));
-        el.style.width = value + '%';
-    });
-});
+document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[data-progress]').forEach(el=>{const v=Math.max(0,Math.min(100,Number(el.dataset.progress||0)));el.style.width=v+'%'});const b=document.querySelector('[data-mobile-menu]');if(b)b.addEventListener('click',()=>document.body.classList.toggle('sidebar-open'));});
