@@ -1,0 +1,755 @@
+{
+  "name": "RS English v2 - Diagnostico + Professor",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RS English v2\\nExecute `013_diagnostic.sql`, substitua `context.php`, adicione `save-diagnostic.php` e faça redeploy do PHP.\\n\\nTroque no workflow: SEU_DOMINIO, SUA_N8N_API_KEY, SUA_OPENAI_API_KEY, SEU_MODELO_OPENAI, SUA_EVOLUTION_API_KEY.",
+        "height": 260,
+        "width": 520
+      },
+      "id": "a5972165-e911-4043-8985-4cb4a95bf3ca",
+      "name": "LEIA PRIMEIRO",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1140,
+        -520
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rs-english",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "bd312cc2-4bfe-4961-bfc1-b71542669c2a",
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1060,
+        0
+      ],
+      "webhookId": "6157b0c8-08b7-47f9-bdec-6c72f24239ba"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body=$json.body??{};\nconst data=body.data??{};\nconst key=data.key??{};\nconst m=data.message??{};\nconst jid=key.remoteJid??'';\nconst phone=String(jid).replace('@s.whatsapp.net','').replace('@c.us','').replace(/\\D/g,'');\nconst text=m.conversation??m.extendedTextMessage?.text??m.imageMessage?.caption??m.videoMessage?.caption??'';\nreturn [{json:{\n event:body.event??'',\n phone,\n name:data.pushName??'Aluno',\n message:String(text).trim(),\n message_type:data.messageType??'unknown',\n from_me:Boolean(key.fromMe),\n is_group:jid.includes('@g.us'),\n evolution_server:body.server_url??'',\n evolution_instance:body.instance??''\n}}];"
+      },
+      "id": "126619a2-4b3c-4c79-992b-95e59ebc5f9f",
+      "name": "Normalizar Entrada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7274c01c-ee2f-4fca-be10-3dd89731639c",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "messages.upsert",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cbb12ae9-790b-4fcc-8815-4a580ae4de76",
+              "leftValue": "={{ $json.from_me }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "eade29f0-377a-44ab-94f0-d2cbcc5c5e04",
+              "leftValue": "={{ $json.is_group }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "bd476680-e222-4061-afed-61090459e77a",
+              "leftValue": "={{ $json.phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e0be90f3-bc4a-4c56-92cf-721a0a48b5b6",
+      "name": "Processar Mensagem?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -580,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://SEU_DOMINIO/api/n8n/context.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Normalizar Entrada').item.json.phone }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ac0cadaa-fbed-4044-9d3b-b77a72a198a5",
+      "name": "Buscar Contexto PHP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -350,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "1edd6cf4-9937-4510-bd12-a0f5c4ca94b3",
+      "name": "Juntar Entrada + Contexto",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cff06056-8442-4319-8cf1-536ec8628136",
+              "leftValue": "={{ $json.found === false || $json.diagnostic_status !== 'completed' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0f287836-c3bf-47ed-84a6-8f4de5802cb3",
+      "name": "Precisa Diagnóstico?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        130,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j=$json;\nconst step=Number(j.diagnostic_step??j.student?.diagnostic_step??0);\nconst level=j.student?.estimated_level||j.student?.overall_level||'A1';\nconst history=Array.isArray(j.recent_messages)?j.recent_messages:[];\nconst prompt=`\nVocê é Emma, responsável pelo diagnóstico inicial do RS English.\nO diagnóstico é adaptativo pelo WhatsApp e tem no máximo 5 respostas avaliadas.\n\nNome: ${j.student?.name||j.name||'Aluno'}\nPasso salvo: ${step}\nNível estimado: ${level}\nMensagem atual: ${j.message}\nHistórico: ${JSON.stringify(history)}\n\nPASSOS\n0: cumprimente e peça apresentação em inglês: nome, trabalho/estudo e algo de que gosta. Não avalie a saudação.\n1: avalie a apresentação e peça para contar como foi o dia de ontem.\n2: avalie passado e peça opinião/preferência com justificativa.\n3: adapte dificuldade; A1/A2: planos do próximo fim de semana; B1+: situação hipotética curta.\n4: última pergunta adaptativa, pouco acima do nível demonstrado.\n5+: conclua.\n\nRegras:\n- se step=0: complete=false, next_step=1.\n- de 1 a 4: avalie a resposta e avance.\n- ao concluir: complete=true.\n- reply deve ser curto e natural.\n- quando concluir, informe nível estimado, 2 pontos fortes e 2 prioridades.\n- scores 0-100.\n- não finja avaliar pronúncia.\n- listening aqui é compreensão das instruções, pois ainda estamos em texto.\n\nRetorne SOMENTE JSON:\n{\n \"reply\":\"\",\n \"current_step\":${step},\n \"next_step\":1,\n \"complete\":false,\n \"estimated_level\":\"A1\",\n \"scores\":{\"grammar\":0,\"vocabulary\":0,\"speaking\":0,\"listening\":0,\"reading\":0,\"writing\":0,\"fluency\":0},\n \"strengths\":[],\n \"weaknesses\":[],\n \"recommendations\":[],\n \"feedback\":\"\",\n \"study_plan\":{\"goal\":\"Melhorar conversação\",\"weekly_minutes\":100,\"focus\":[],\"week_1\":[],\"week_2\":[],\"week_3\":[],\"week_4\":[]}\n}`.trim();\nreturn [{json:{...j,diagnostic_prompt:prompt}}];"
+      },
+      "id": "563ad75e-5f47-4531-85b2-2207ff4c83a5",
+      "name": "Montar Prompt Diagnóstico",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.diagnostic_prompt } }}",
+        "options": {}
+      },
+      "id": "d8a60082-39b8-4e03-87fd-bb141293a236",
+      "name": "Diagnóstico IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        620,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;\nlet text=r.output_text;\nif(!text&&Array.isArray(r.output)){const p=[];for(const i of r.output){for(const c of(i.content??[])){if(typeof c.text==='string')p.push(c.text)}}text=p.join('\\n')}\ntext=String(text??'').replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim();\nlet diagnostic;\ntry{diagnostic=JSON.parse(text)}catch(e){diagnostic={reply:\"I couldn't evaluate that. Could you answer again in English? 😊\",current_step:0,next_step:0,complete:false,estimated_level:\"A1\",scores:{},strengths:[],weaknesses:[],recommendations:[],study_plan:{}}}\nreturn [{json:{diagnostic,teacher_message:diagnostic.reply}}];"
+      },
+      "id": "7f6f4145-b21d-47a3-b735-0e0550e3fd08",
+      "name": "Extrair Diagnóstico",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "46b02c00-7ab9-4b65-adf8-f55aa04c6363",
+      "name": "Juntar Dados + Diagnóstico",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1090,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/n8n/save-diagnostic.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { phone: $('Normalizar Entrada').item.json.phone, student_name: $('Normalizar Entrada').item.json.name, student_message: $('Normalizar Entrada').item.json.message, teacher_message: $json.teacher_message, diagnostic: $json.diagnostic } }}",
+        "options": {}
+      },
+      "id": "a3adfa38-c4d5-40f3-b5fe-0c078d3eba5d",
+      "name": "Salvar Diagnóstico PHP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1330,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Normalizar Entrada').item.json.evolution_server + '/message/sendText/' + $('Normalizar Entrada').item.json.evolution_instance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUA_EVOLUTION_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number: $('Normalizar Entrada').item.json.phone, text: $json.teacher_message } }}",
+        "options": {}
+      },
+      "id": "005541f5-4fc2-49a5-86e9-73d1a909d74c",
+      "name": "Responder Diagnóstico WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1330,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j=$json,s=j.student||{};\nconst teacherPrompt=`Você é Emma, professora particular de inglês do RS English.\nAluno: ${s.name||j.name||'Aluno'}\nNível: ${s.overall_level||'A1'}\nObjetivo: ${s.goal||'Aprender inglês'}\nCorreção: ${s.correction_mode||'balanced'}\nPlano: ${JSON.stringify(j.active_plan||{})}\nFragilidades: ${JSON.stringify(j.weaknesses||[])}\nVocabulário: ${JSON.stringify(j.vocabulary_review||[])}\nHistórico: ${JSON.stringify(j.recent_messages||[])}\nMensagem atual: ${j.message}\n\nConverse principalmente em inglês. Para A1/A2, português só se necessário.\nNo modo balanced, faça no máximo 1 ou 2 correções importantes.\nContinue com pergunta ou microatividade coerente com o plano.\nNão invente evolução e não altere oficialmente o CEFR.\nResponda apenas a mensagem para WhatsApp.`;\n\nconst evaluatorPrompt=`Avalie silenciosamente: ${j.message}\nNível oficial: ${s.overall_level||'A1'}\nRetorne SOMENTE JSON:\n{\"grammar_score\":0,\"vocabulary_score\":0,\"fluency_score\":0,\"comprehension_score\":0,\"errors\":[],\"skills\":[]}\nerrors: {\"category\":\"grammar\",\"topic\":\"past_simple\",\"original\":\"\",\"corrected\":\"\",\"explanation\":\"\",\"severity\":\"low|medium|high\"}\nskills: {\"code\":\"past_simple\",\"score\":0,\"success\":false}\nUse: grammar,vocabulary,speaking,listening,reading,writing,fluency,pronunciation,past_simple,present_simple,present_continuous,articles,prepositions,word_order,irregular_verbs.`;\n\nreturn [{json:{...j,teacher_prompt:teacherPrompt,evaluator_prompt:evaluatorPrompt}}];"
+      },
+      "id": "c25fecb4-3146-415e-84ee-05dabcb80b79",
+      "name": "Montar Contexto Professor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.teacher_prompt } }}",
+        "options": {}
+      },
+      "id": "c99c79f9-bf96-4c41-9090-d9ed47f25880",
+      "name": "Teacher IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        620,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;let text=r.output_text;if(!text&&Array.isArray(r.output)){const p=[];for(const i of r.output){for(const c of(i.content??[])){if(typeof c.text==='string')p.push(c.text)}}text=p.join('\\n')}return [{json:{teacher_message:String(text??'').trim()}}];"
+      },
+      "id": "8f58fbf1-c1a9-41da-b13a-99c2c73d06e2",
+      "name": "Extrair Teacher",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.evaluator_prompt } }}",
+        "options": {}
+      },
+      "id": "f9694941-6794-4c70-9029-f31964ed2b84",
+      "name": "Evaluator IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        620,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;let text=r.output_text;if(!text&&Array.isArray(r.output)){const p=[];for(const i of r.output){for(const c of(i.content??[])){if(typeof c.text==='string')p.push(c.text)}}text=p.join('\\n')}\ntext=String(text??'').replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim();\nlet evaluation;try{evaluation=JSON.parse(text)}catch(e){evaluation={grammar_score:null,vocabulary_score:null,fluency_score:null,comprehension_score:null,errors:[],skills:[]}}\nreturn [{json:{evaluation}}];"
+      },
+      "id": "856ae046-e5fe-484b-8355-0340a94f1cc5",
+      "name": "Extrair Avaliação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "bf97a1dd-709c-482a-92fe-36fd1ae2704a",
+      "name": "Juntar Contexto + Teacher",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1090,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "ed3b8bfa-192b-4854-81ff-492bed347a78",
+      "name": "Juntar Teacher + Avaliação",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1330,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/n8n/save-interaction.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { phone: $('Normalizar Entrada').item.json.phone, student_name: $('Normalizar Entrada').item.json.name, student_message: $('Normalizar Entrada').item.json.message, teacher_message: $json.teacher_message, message_type: $('Normalizar Entrada').item.json.message_type, mode: 'conversation', topic: '', evaluation: $json.evaluation } }}",
+        "options": {}
+      },
+      "id": "503bc477-eb92-4d48-962a-0c09629b3c5a",
+      "name": "Salvar Interação PHP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Normalizar Entrada').item.json.evolution_server + '/message/sendText/' + $('Normalizar Entrada').item.json.evolution_instance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUA_EVOLUTION_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number: $('Normalizar Entrada').item.json.phone, text: $json.teacher_message } }}",
+        "options": {}
+      },
+      "id": "e59284c0-3f49-464e-90e9-e4b62379a35f",
+      "name": "Responder WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        360
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Entrada": {
+      "main": [
+        [
+          {
+            "node": "Processar Mensagem?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Mensagem?": {
+      "main": [
+        [
+          {
+            "node": "Buscar Contexto PHP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Entrada + Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Buscar Contexto PHP": {
+      "main": [
+        [
+          {
+            "node": "Juntar Entrada + Contexto",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Entrada + Contexto": {
+      "main": [
+        [
+          {
+            "node": "Precisa Diagnóstico?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Precisa Diagnóstico?": {
+      "main": [
+        [
+          {
+            "node": "Montar Prompt Diagnóstico",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar Contexto Professor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Prompt Diagnóstico": {
+      "main": [
+        [
+          {
+            "node": "Diagnóstico IA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Dados + Diagnóstico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagnóstico IA": {
+      "main": [
+        [
+          {
+            "node": "Extrair Diagnóstico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Diagnóstico": {
+      "main": [
+        [
+          {
+            "node": "Juntar Dados + Diagnóstico",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Dados + Diagnóstico": {
+      "main": [
+        [
+          {
+            "node": "Salvar Diagnóstico PHP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Responder Diagnóstico WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Contexto Professor": {
+      "main": [
+        [
+          {
+            "node": "Teacher IA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Evaluator IA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Contexto + Teacher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teacher IA": {
+      "main": [
+        [
+          {
+            "node": "Extrair Teacher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Teacher": {
+      "main": [
+        [
+          {
+            "node": "Juntar Contexto + Teacher",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Evaluator IA": {
+      "main": [
+        [
+          {
+            "node": "Extrair Avaliação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Juntar Contexto + Teacher": {
+      "main": [
+        [
+          {
+            "node": "Juntar Teacher + Avaliação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Avaliação": {
+      "main": [
+        [
+          {
+            "node": "Juntar Teacher + Avaliação",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Teacher + Avaliação": {
+      "main": [
+        [
+          {
+            "node": "Salvar Interação PHP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Responder WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "32d05679-c37a-4e8b-bb6f-0a7f701ae89f",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

@@ -10,7 +10,9 @@ $id = $_GET['id'] ?? '';
 
 $stmt = $pdo->prepare("
 SELECT s.*,
-       sp.overall_level, sp.goal, sp.correction_mode,
+       sp.overall_level, sp.estimated_level, sp.goal, sp.correction_mode,
+       sp.diagnostic_status, sp.diagnostic_step,
+       sp.diagnostic_started_at, sp.diagnostic_completed_at,
        COALESCE(sp.grammar_score,0) grammar_score,
        COALESCE(sp.vocabulary_score,0) vocabulary_score,
        COALESCE(sp.speaking_score,0) speaking_score,
@@ -37,7 +39,7 @@ $errorsStmt = $pdo->prepare("
 SELECT category, topic, original_text, corrected_text, severity, occurrences, created_at
 FROM student_errors
 WHERE student_id = :id
-ORDER BY created_at DESC
+ORDER BY occurrences DESC, created_at DESC
 LIMIT 10
 ");
 $errorsStmt->execute(['id' => $id]);
@@ -53,11 +55,34 @@ LIMIT 10
 $sessionsStmt->execute(['id' => $id]);
 $sessions = $sessionsStmt->fetchAll();
 
+$assessmentStmt = $pdo->prepare("
+SELECT ar.*, a.title
+FROM assessment_results ar
+LEFT JOIN assessments a ON a.id = ar.assessment_id
+WHERE ar.student_id = :id
+ORDER BY ar.created_at DESC
+LIMIT 1
+");
+$assessmentStmt->execute(['id' => $id]);
+$assessment = $assessmentStmt->fetch() ?: null;
+
+$planStmt = $pdo->prepare("
+SELECT *
+FROM study_plans
+WHERE student_id = :id
+  AND status = 'active'
+ORDER BY created_at DESC
+LIMIT 1
+");
+$planStmt->execute(['id' => $id]);
+$plan = $planStmt->fetch() ?: null;
+$planData = $plan ? json_decode($plan['plan_data'] ?? '{}', true) : [];
+
 $skills = [
     'Grammar' => $student['grammar_score'],
     'Vocabulary' => $student['vocabulary_score'],
     'Speaking' => $student['speaking_score'],
-    'Listening' => $student['listening_score'],
+    'Listening / Comprehension' => $student['listening_score'],
     'Reading' => $student['reading_score'],
     'Writing' => $student['writing_score'],
     'Fluency' => $student['fluency_score'],
@@ -80,26 +105,109 @@ require __DIR__ . '/../templates/header.php';
     </div>
 </div>
 
+<section class="cards">
+    <div class="card">
+        <div class="label">Diagnóstico</div>
+        <div class="metric" style="font-size:20px"><?= htmlspecialchars($student['diagnostic_status'] ?? 'pending') ?></div>
+    </div>
+    <div class="card">
+        <div class="label">Nível atual</div>
+        <div class="metric"><?= htmlspecialchars($student['overall_level'] ?? 'A1') ?></div>
+    </div>
+    <div class="card">
+        <div class="label">Meta do plano</div>
+        <div class="metric"><?= htmlspecialchars($plan['target_level'] ?? '-') ?></div>
+    </div>
+    <div class="card">
+        <div class="label">Plano</div>
+        <div class="metric" style="font-size:20px"><?= $plan ? 'Ativo' : 'Pendente' ?></div>
+    </div>
+</section>
+
 <div class="grid-2">
     <section class="panel">
         <h2>Competências</h2>
         <?php foreach ($skills as $name => $score): ?>
             <div class="skill">
-                <div class="skill-head"><span><?= htmlspecialchars($name) ?></span><strong><?= number_format((float)$score,0) ?>%</strong></div>
+                <div class="skill-head">
+                    <span><?= htmlspecialchars($name) ?></span>
+                    <strong><?= number_format((float)$score,0) ?>%</strong>
+                </div>
                 <div class="progress"><span data-progress="<?= (float)$score ?>"></span></div>
             </div>
         <?php endforeach; ?>
     </section>
 
     <section class="panel">
-        <h2>Erros recentes</h2>
+        <h2>Plano de estudo</h2>
+        <?php if (!$plan): ?>
+            <p class="label">O plano será criado após concluir o diagnóstico.</p>
+        <?php else: ?>
+            <p><strong>Objetivo:</strong> <?= htmlspecialchars($plan['goal'] ?? '') ?></p>
+            <p><strong>Meta:</strong> <?= htmlspecialchars($plan['target_level'] ?? '') ?></p>
+
+            <?php if (!empty($planData['focus'])): ?>
+                <h3>Foco</h3>
+                <ul>
+                    <?php foreach ($planData['focus'] as $item): ?>
+                        <li><?= htmlspecialchars((string)$item) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <?php for ($week=1; $week<=4; $week++): ?>
+                <?php $key = 'week_' . $week; ?>
+                <?php if (!empty($planData[$key])): ?>
+                    <h3>Semana <?= $week ?></h3>
+                    <ul>
+                        <?php foreach ($planData[$key] as $item): ?>
+                            <li><?= htmlspecialchars((string)$item) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            <?php endfor; ?>
+        <?php endif; ?>
+    </section>
+</div>
+
+<div class="grid-2" style="margin-top:20px">
+    <section class="panel">
+        <h2>Último diagnóstico</h2>
+        <?php if (!$assessment): ?>
+            <p class="label">Nenhuma avaliação concluída ainda.</p>
+        <?php else: ?>
+            <p><strong><?= htmlspecialchars($assessment['title'] ?? 'Avaliação') ?></strong></p>
+            <p>Nível: <span class="badge"><?= htmlspecialchars($assessment['overall_level'] ?? '-') ?></span></p>
+            <p>Nota geral: <strong><?= number_format((float)$assessment['total_score'],0) ?>%</strong></p>
+            <?php
+                $strengths = json_decode($assessment['strengths'] ?? '[]', true) ?: [];
+                $weaknesses = json_decode($assessment['weaknesses'] ?? '[]', true) ?: [];
+            ?>
+            <?php if ($strengths): ?>
+                <h3>Pontos fortes</h3>
+                <ul><?php foreach ($strengths as $x): ?><li><?= htmlspecialchars((string)$x) ?></li><?php endforeach; ?></ul>
+            <?php endif; ?>
+            <?php if ($weaknesses): ?>
+                <h3>Prioridades</h3>
+                <ul><?php foreach ($weaknesses as $x): ?><li><?= htmlspecialchars((string)$x) ?></li><?php endforeach; ?></ul>
+            <?php endif; ?>
+        <?php endif; ?>
+    </section>
+
+    <section class="panel">
+        <h2>Erros recorrentes</h2>
         <?php if (!$errors): ?>
             <p class="label">Nenhum erro registrado ainda.</p>
         <?php endif; ?>
         <?php foreach ($errors as $error): ?>
             <div style="margin-bottom:16px">
                 <strong><?= htmlspecialchars($error['topic'] ?: $error['category'] ?: 'Correção') ?></strong>
-                <div class="label"><?= htmlspecialchars($error['original_text'] ?? '') ?> → <?= htmlspecialchars($error['corrected_text'] ?? '') ?></div>
+                <span class="badge"><?= (int)$error['occurrences'] ?>x</span>
+                <div class="label">
+                    <?= htmlspecialchars($error['original_text'] ?? '') ?>
+                    →
+                    <?= htmlspecialchars($error['corrected_text'] ?? '') ?>
+                </div>
             </div>
         <?php endforeach; ?>
     </section>
@@ -108,7 +216,9 @@ require __DIR__ . '/../templates/header.php';
 <section class="panel" style="margin-top:20px">
     <h2>Sessões recentes</h2>
     <table>
-        <thead><tr><th>Data</th><th>Modo</th><th>Tópico</th><th>Grammar</th><th>Vocabulary</th><th>Fluency</th></tr></thead>
+        <thead>
+        <tr><th>Data</th><th>Modo</th><th>Tópico</th><th>Grammar</th><th>Vocabulary</th><th>Fluency</th></tr>
+        </thead>
         <tbody>
         <?php foreach ($sessions as $session): ?>
             <tr>
