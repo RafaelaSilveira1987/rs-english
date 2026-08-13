@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
@@ -15,10 +14,10 @@ function current_user(): ?array
         return null;
     }
 
-    static $user = null;
+    static $cache = null;
 
-    if ($user !== null) {
-        return $user;
+    if ($cache !== null) {
+        return $cache;
     }
 
     try {
@@ -32,9 +31,10 @@ function current_user(): ?array
         ");
 
         $stmt->execute(['id'=>$_SESSION['user_id']]);
-        $user = $stmt->fetch() ?: null;
 
-        return $user;
+        $cache = $stmt->fetch() ?: null;
+
+        return $cache;
     } catch (Throwable $e) {
         return null;
     }
@@ -50,6 +50,7 @@ function is_admin(): bool
     if (!empty($_SESSION['legacy_admin'])) return true;
 
     $user=current_user();
+
     return $user && in_array($user['role'],['admin','owner'],true);
 }
 
@@ -58,19 +59,21 @@ function is_teacher(): bool
     if (is_admin()) return true;
 
     $user=current_user();
+
     return $user && $user['role']==='teacher';
 }
 
 function is_student(): bool
 {
     $user=current_user();
+
     return $user && $user['role']==='student';
 }
 
 function require_login(): void
 {
     if (!is_logged_in()) {
-        header('Location: /login.php');
+        header('Location:/login.php');
         exit;
     }
 }
@@ -80,6 +83,16 @@ function require_admin(): void
     require_login();
 
     if (!is_admin()) {
+        http_response_code(403);
+        exit('Acesso negado.');
+    }
+}
+
+function require_teacher_or_admin(): void
+{
+    require_login();
+
+    if (!is_teacher()) {
         http_response_code(403);
         exit('Acesso negado.');
     }
@@ -99,7 +112,7 @@ function require_student(): array
     return $user;
 }
 
-function attempt_login(string $login, string $password): bool
+function attempt_login(string $login,string $password): bool
 {
     $login=trim($login);
 
@@ -121,7 +134,6 @@ function attempt_login(string $login, string $password): bool
 
         if ($user && password_verify($password,$user['password_hash'])) {
             session_regenerate_id(true);
-
             $_SESSION['user_id']=$user['id'];
             unset($_SESSION['legacy_admin']);
 
@@ -134,7 +146,7 @@ function attempt_login(string $login, string $password): bool
             return true;
         }
     } catch (Throwable $e) {
-        // Mantém fallback de admin via ENV durante migração.
+        // fallback abaixo
     }
 
     $legacyUser=env('ADMIN_USER','admin');
@@ -179,6 +191,5 @@ function logout_user(): void
 
 function post_login_redirect(): string
 {
-    if (is_student()) return '/portal/index.php';
-    return '/index.php';
+    return is_student() ? '/portal/index.php' : '/index.php';
 }

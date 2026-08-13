@@ -1,43 +1,47 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../../src/db.php';
-require_once __DIR__ . '/../../src/auth.php';
+require_once __DIR__.'/../../src/db.php';
+require_once __DIR__.'/../../src/auth.php';
 
 require_admin();
 
 $pdo=db();
 $success=null;
 
-$stmt=$pdo->query("
+$settings=$pdo->query("
 SELECT *
 FROM teacher_settings
 ORDER BY created_at
 LIMIT 1
-");
-$settings=$stmt->fetch();
+")->fetch();
 
 if(!$settings){
     $pdo->exec("
-    INSERT INTO teacher_settings(
-        teacher_name,teacher_personality,default_correction_mode,
-        default_language_mix,max_corrections_per_message
-    )
-    VALUES('Emma','balanced','balanced','adaptive',2)
+        INSERT INTO teacher_settings(
+            teacher_name,teacher_personality,default_correction_mode,
+            default_language_mix,max_corrections_per_message
+        )
+        VALUES('Emma','balanced','balanced','adaptive',2)
     ");
-    $settings=$pdo->query("SELECT * FROM teacher_settings ORDER BY created_at LIMIT 1")->fetch();
+
+    $settings=$pdo->query("
+        SELECT * FROM teacher_settings
+        ORDER BY created_at
+        LIMIT 1
+    ")->fetch();
 }
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
     $pdo->prepare("
-    UPDATE teacher_settings SET
-        teacher_name=:name,
-        teacher_personality=:personality,
-        default_correction_mode=:correction,
-        default_language_mix=:language_mix,
-        max_corrections_per_message=:max_corrections,
-        updated_at=NOW()
-    WHERE id=:id
+        UPDATE teacher_settings SET
+            teacher_name=:name,
+            teacher_personality=:personality,
+            default_correction_mode=:correction,
+            default_language_mix=:language_mix,
+            max_corrections_per_message=:max_corrections,
+            updated_at=NOW()
+        WHERE id=:id
     ")->execute([
         'name'=>trim($_POST['teacher_name'] ?? 'Emma'),
         'personality'=>$_POST['teacher_personality'] ?? 'balanced',
@@ -48,14 +52,21 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     ]);
 
     $success='Configurações atualizadas.';
-    $settings=$pdo->query("SELECT * FROM teacher_settings ORDER BY created_at LIMIT 1")->fetch();
+
+    $settings=$pdo->query("
+        SELECT * FROM teacher_settings
+        ORDER BY created_at
+        LIMIT 1
+    ")->fetch();
 }
 
-$pageTitle='Configurações do professor';
+$pageTitle='Professor IA';
 require __DIR__.'/../../templates/header.php';
 ?>
 
-<?php if($success): ?><div class="list-card"><strong><?= htmlspecialchars($success) ?></strong></div><?php endif; ?>
+<?php if($success): ?>
+<div class="list-card"><strong><?= htmlspecialchars($success) ?></strong></div>
+<?php endif; ?>
 
 <section class="panel">
 <form method="post">
@@ -68,8 +79,14 @@ require __DIR__.'/../../templates/header.php';
         <div class="form-row">
             <label>Personalidade</label>
             <select name="teacher_personality">
-                <?php foreach(['supportive'=>'Acolhedora','balanced'=>'Equilibrada','strict'=>'Exigente'] as $v=>$label): ?>
-                    <option value="<?= $v ?>" <?= $settings['teacher_personality']===$v?'selected':'' ?>><?= $label ?></option>
+                <?php foreach([
+                    'supportive'=>'Acolhedora',
+                    'balanced'=>'Equilibrada',
+                    'strict'=>'Exigente'
+                ] as $v=>$label): ?>
+                    <option value="<?= $v ?>" <?= $settings['teacher_personality']===$v?'selected':'' ?>>
+                        <?= $label ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -80,7 +97,9 @@ require __DIR__.'/../../templates/header.php';
             <label>Correção padrão</label>
             <select name="default_correction_mode">
                 <?php foreach(['light','balanced','intensive'] as $v): ?>
-                    <option value="<?= $v ?>" <?= $settings['default_correction_mode']===$v?'selected':'' ?>><?= ucfirst($v) ?></option>
+                    <option value="<?= $v ?>" <?= $settings['default_correction_mode']===$v?'selected':'' ?>>
+                        <?= ucfirst($v) ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -88,8 +107,14 @@ require __DIR__.'/../../templates/header.php';
         <div class="form-row">
             <label>Idioma das explicações</label>
             <select name="default_language_mix">
-                <?php foreach(['english'=>'Inglês','adaptive'=>'Adaptativo','portuguese_support'=>'Inglês + apoio PT'] as $v=>$label): ?>
-                    <option value="<?= $v ?>" <?= $settings['default_language_mix']===$v?'selected':'' ?>><?= $label ?></option>
+                <?php foreach([
+                    'english'=>'Inglês',
+                    'adaptive'=>'Adaptativo',
+                    'portuguese_support'=>'Inglês + apoio PT'
+                ] as $v=>$label): ?>
+                    <option value="<?= $v ?>" <?= $settings['default_language_mix']===$v?'selected':'' ?>>
+                        <?= $label ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </div>

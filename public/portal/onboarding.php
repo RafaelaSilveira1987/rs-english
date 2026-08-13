@@ -1,21 +1,26 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../../src/db.php';
-require_once __DIR__ . '/../../src/auth.php';
+require_once __DIR__.'/../../src/db.php';
+require_once __DIR__.'/../../src/auth.php';
 
 $user=require_student();
 $pdo=db();
 $studentId=$user['student_id'];
 
-$stmt=$pdo->prepare("SELECT * FROM student_preferences WHERE student_id=:id LIMIT 1");
+$stmt=$pdo->prepare("
+SELECT *
+FROM student_preferences
+WHERE student_id=:id
+LIMIT 1
+");
 $stmt->execute(['id'=>$studentId]);
 $prefs=$stmt->fetch();
 
 if(!$prefs){
     $pdo->prepare("
-    INSERT INTO student_preferences(student_id)
-    VALUES(:id)
+        INSERT INTO student_preferences(student_id)
+        VALUES(:id)
     ")->execute(['id'=>$studentId]);
 
     $stmt->execute(['id'=>$studentId]);
@@ -25,19 +30,23 @@ if(!$prefs){
 $success=null;
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
-    $topics=array_values(array_filter(array_map('trim',explode(',',$_POST['preferred_topics'] ?? ''))));
+    $topics=array_values(
+        array_filter(
+            array_map('trim',explode(',',$_POST['preferred_topics'] ?? ''))
+        )
+    );
 
     $pdo->prepare("
-    UPDATE student_preferences SET
-        daily_minutes=:daily_minutes,
-        weekly_days=:weekly_days,
-        preferred_topics=CAST(:topics AS jsonb),
-        focus_mode=:focus_mode,
-        correction_mode=:correction_mode,
-        preferred_study_time=:preferred_study_time,
-        notes=:notes,
-        updated_at=NOW()
-    WHERE student_id=:id
+        UPDATE student_preferences SET
+            daily_minutes=:daily_minutes,
+            weekly_days=:weekly_days,
+            preferred_topics=CAST(:topics AS jsonb),
+            focus_mode=:focus_mode,
+            correction_mode=:correction_mode,
+            preferred_study_time=:preferred_study_time,
+            notes=:notes,
+            updated_at=NOW()
+        WHERE student_id=:id
     ")->execute([
         'daily_minutes'=>(int)($_POST['daily_minutes'] ?? 20),
         'weekly_days'=>(int)($_POST['weekly_days'] ?? 5),
@@ -50,10 +59,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     ]);
 
     $pdo->prepare("
-    UPDATE student_profiles SET
-        correction_mode=:correction,
-        updated_at=NOW()
-    WHERE student_id=:id
+        UPDATE student_profiles SET
+            correction_mode=:correction,
+            updated_at=NOW()
+        WHERE student_id=:id
     ")->execute([
         'correction'=>$_POST['correction_mode'] ?? 'balanced',
         'id'=>$studentId
@@ -67,11 +76,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 
 $topics=implode(', ',json_decode($prefs['preferred_topics'] ?? '[]',true) ?: []);
 
-$pageTitle='Meu plano de estudo';
+$pageTitle='Meu plano';
 require __DIR__.'/../../templates/header.php';
 ?>
 
-<?php if($success): ?><div class="list-card"><strong><?= htmlspecialchars($success) ?></strong></div><?php endif; ?>
+<?php if($success): ?>
+<div class="list-card"><strong><?= htmlspecialchars($success) ?></strong></div>
+<?php endif; ?>
 
 <section class="panel">
 <form method="post">
@@ -106,7 +117,9 @@ require __DIR__.'/../../templates/header.php';
                     'business'=>'Business English',
                     'travel'=>'Viagem'
                 ] as $v=>$label): ?>
-                    <option value="<?= $v ?>" <?= $prefs['focus_mode']===$v?'selected':'' ?>><?= $label ?></option>
+                    <option value="<?= $v ?>" <?= $prefs['focus_mode']===$v?'selected':'' ?>>
+                        <?= $label ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </div>

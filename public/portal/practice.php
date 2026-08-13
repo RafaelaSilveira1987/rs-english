@@ -3,19 +3,19 @@ declare(strict_types=1);
 
 require_once __DIR__.'/../../src/auth.php';
 
-$user=require_student();
+require_student();
 
 $pageTitle='Praticar com Emma';
 require __DIR__.'/../../templates/header.php';
 ?>
 
 <section class="panel">
-    <div id="chat" style="height:440px;overflow:auto;padding:8px 0"></div>
+<div id="chat" style="height:440px;overflow:auto;padding:8px 0"></div>
 
-    <form id="practice-form" style="display:flex;gap:10px;margin-top:15px">
-        <input id="message" autocomplete="off" placeholder="Escreva em inglês..." required>
-        <button class="btn btn-primary" style="max-width:120px">Enviar</button>
-    </form>
+<form id="practice-form" style="display:flex;gap:10px;margin-top:15px">
+    <input id="message" autocomplete="off" placeholder="Escreva em inglês..." required>
+    <button class="btn btn-primary" style="max-width:120px">Enviar</button>
+</form>
 </section>
 
 <script>
@@ -25,12 +25,15 @@ const input=document.getElementById('message');
 
 function addMessage(text,who){
     const box=document.createElement('div');
+
     box.className='list-card';
     box.style.maxWidth='80%';
     box.style.marginLeft=who==='student'?'auto':'0';
     box.style.background=who==='student'?'#eeefff':'#f8faff';
+
     box.innerHTML='<strong>'+(who==='student'?'Você':'Emma')+'</strong><p style="white-space:pre-line"></p>';
     box.querySelector('p').textContent=text;
+
     chat.appendChild(box);
     chat.scrollTop=chat.scrollHeight;
 }
@@ -39,9 +42,10 @@ form.addEventListener('submit',async e=>{
     e.preventDefault();
 
     const message=input.value.trim();
-    if(!message) return;
+    if(!message)return;
 
     addMessage(message,'student');
+
     input.value='';
     input.disabled=true;
 

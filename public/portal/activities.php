@@ -35,6 +35,7 @@ require __DIR__.'/../../templates/header.php';
             <strong><?= htmlspecialchars($row['title']) ?></strong>
             <p><?= htmlspecialchars($row['description'] ?? '') ?></p>
         </div>
+
         <span class="badge <?= $row['status']==='completed'?'success':'warning' ?>">
             <?= htmlspecialchars($row['status']) ?>
         </span>
@@ -44,6 +45,7 @@ require __DIR__.'/../../templates/header.php';
         <span class="badge"><?= htmlspecialchars($row['skill'] ?? '-') ?></span>
         <span class="badge"><?= (int)$row['estimated_minutes'] ?> min</span>
         <span class="badge"><?= (int)$row['xp_reward'] ?> XP</span>
+
         <?php if($row['score']!==null): ?>
             <span class="badge success"><?= number_format((float)$row['score'],0) ?>%</span>
         <?php endif; ?>

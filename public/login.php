@@ -1,21 +1,18 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../src/auth.php';
+require_once __DIR__.'/../src/auth.php';
 
-if (is_logged_in()) {
-    header('Location: '.post_login_redirect());
+if(is_logged_in()){
+    header('Location:'.post_login_redirect());
     exit;
 }
 
 $error=null;
 
 if($_SERVER['REQUEST_METHOD']==='POST'){
-    $login=trim($_POST['login'] ?? '');
-    $password=$_POST['password'] ?? '';
-
-    if(attempt_login($login,$password)){
-        header('Location: '.post_login_redirect());
+    if(attempt_login(trim($_POST['login'] ?? ''),$_POST['password'] ?? '')){
+        header('Location:'.post_login_redirect());
         exit;
     }
 
@@ -36,8 +33,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:22px">
         <div class="brand-mark">RS</div>
         <div>
-            <h1 style="margin:0">RS English</h1>
-            <div class="label">English Coach</div>
+            <h1>RS English</h1>
+            <div class="label">AI English Coach</div>
         </div>
     </div>
 
@@ -55,7 +52,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
         <input type="password" name="password" required>
     </div>
 
-    <button class="btn btn-primary" style="width:100%" type="submit">Entrar</button>
+    <button class="btn btn-primary" style="width:100%" type="submit">
+        Entrar
+    </button>
 </form>
 </div>
 </body>

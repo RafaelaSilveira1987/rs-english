@@ -33,19 +33,32 @@ require __DIR__.'/../../templates/header.php';
 <div class="table-wrap">
 <table>
 <thead>
-<tr><th>Palavra</th><th>Tradução</th><th>Nível</th><th>Domínio</th><th>Status</th><th>Próxima revisão</th></tr>
+<tr>
+    <th>Palavra</th>
+    <th>Tradução</th>
+    <th>Nível</th>
+    <th>Domínio</th>
+    <th>Status</th>
+    <th>Próxima revisão</th>
+</tr>
 </thead>
 <tbody>
 <?php foreach($rows as $row): ?>
 <tr>
     <td>
         <strong><?= htmlspecialchars($row['word']) ?></strong>
-        <?php if($row['example']): ?><div class="label"><?= htmlspecialchars($row['example']) ?></div><?php endif; ?>
+        <?php if($row['example']): ?>
+            <div class="label"><?= htmlspecialchars($row['example']) ?></div>
+        <?php endif; ?>
     </td>
     <td><?= htmlspecialchars($row['translation'] ?? '-') ?></td>
     <td><?= htmlspecialchars($row['level'] ?? '-') ?></td>
     <td><?= number_format((float)$row['mastery_score'],0) ?>%</td>
-    <td><span class="badge <?= $row['status']==='mastered'?'success':'' ?>"><?= htmlspecialchars($row['status']) ?></span></td>
+    <td>
+        <span class="badge <?= $row['status']==='mastered'?'success':'' ?>">
+            <?= htmlspecialchars($row['status']) ?>
+        </span>
+    </td>
     <td><?= $row['next_review_at'] ? date('d/m/Y H:i',strtotime($row['next_review_at'])) : '-' ?></td>
 </tr>
 <?php endforeach; ?>

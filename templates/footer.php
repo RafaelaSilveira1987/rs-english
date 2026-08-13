@@ -1,1 +1,6 @@
-</main></div><script src="/assets/js/app.js"></script></body></html>
+
+</main>
+</div>
+<script src="/assets/js/app.js"></script>
+</body>
+</html>
