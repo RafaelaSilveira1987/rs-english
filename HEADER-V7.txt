@@ -1,0 +1,23 @@
+Sugestão de navegação após a v7:
+
+ADMIN/PROFESSOR
+- Dashboard
+- Alunos
+- Atividades
+- Conteúdos
+- Currículo
+- Relatórios
+
+ADMINISTRAÇÃO
+- Usuários -> /admin/users.php
+- Professor IA -> /admin/teacher-settings.php
+
+ALUNO
+- Meu progresso -> /portal/index.php
+- Praticar -> /portal/practice.php
+- Atividades -> /portal/activities.php
+- Vocabulário -> /portal/vocabulary.php
+- Meu plano -> /portal/onboarding.php
+
+No `templates/header.php`, use `current_user()` para exibir menus por role.
+O pacote não substitui seu header automaticamente para evitar perder customizações visuais da v4/v5/v6.

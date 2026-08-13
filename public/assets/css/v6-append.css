@@ -1,0 +1,2 @@
+/* v6 */
+.goal-line{display:grid;grid-template-columns:130px 1fr 65px;align-items:center;gap:12px;font-size:13px}.achievement-row{display:flex;gap:10px;flex-wrap:wrap}.achievement{min-width:150px;padding:12px 14px;border:1px solid var(--border);background:linear-gradient(135deg,#fff,#f7f8ff);border-radius:14px}

@@ -1,0 +1,23 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__ . '/../../../src/db.php';
+require_once __DIR__ . '/../../../src/api.php';
+require_n8n_key();
+$phone=normalize_phone($_GET['phone'] ?? '');
+if(!$phone) json_response(['error'=>'phone é obrigatório'],422);
+$pdo=db();
+$stmt=$pdo->prepare("SELECT s.id,s.name,s.phone,COALESCE(sp.overall_level,'A1') overall_level,sp.goal,COALESCE(sp.xp,0) xp,COALESCE(sp.streak_days,0) streak_days,COALESCE(sp.grammar_score,0) grammar_score,COALESCE(sp.vocabulary_score,0) vocabulary_score,COALESCE(sp.speaking_score,0) speaking_score,COALESCE(sp.listening_score,0) listening_score,COALESCE(sp.fluency_score,0) fluency_score FROM students s LEFT JOIN student_profiles sp ON sp.student_id=s.id WHERE s.phone=:phone LIMIT 1");
+$stmt->execute(['phone'=>$phone]); $student=$stmt->fetch();
+if(!$student) json_response(['found'=>false],404);
+$weekStart=(new DateTimeImmutable('monday last week'))->format('Y-m-d');
+$weekEnd=(new DateTimeImmutable('sunday last week'))->format('Y-m-d');
+$q=$pdo->prepare("SELECT COUNT(*) sessions,COALESCE(AVG(grammar_score),0) avg_grammar,COALESCE(AVG(vocabulary_score),0) avg_vocabulary,COALESCE(AVG(fluency_score),0) avg_fluency FROM sessions WHERE student_id=:id AND created_at::date BETWEEN :start AND :end");
+$q->execute(['id'=>$student['id'],'start'=>$weekStart,'end'=>$weekEnd]); $sessionStats=$q->fetch();
+$q=$pdo->prepare("SELECT COUNT(*) FILTER(WHERE status='completed') completed,COALESCE(SUM(xp_earned) FILTER(WHERE status='completed'),0) xp FROM student_activities WHERE student_id=:id AND completed_at::date BETWEEN :start AND :end");
+$q->execute(['id'=>$student['id'],'start'=>$weekStart,'end'=>$weekEnd]); $activityStats=$q->fetch();
+$q=$pdo->prepare("SELECT COUNT(*) FILTER(WHERE first_seen_at::date BETWEEN :start AND :end) new_words,COUNT(*) FILTER(WHERE status='mastered') mastered_total FROM student_vocabulary WHERE student_id=:id");
+$q->execute(['id'=>$student['id'],'start'=>$weekStart,'end'=>$weekEnd]); $wordStats=$q->fetch();
+$q=$pdo->prepare("SELECT topic,occurrences,mastery_score FROM student_errors WHERE student_id=:id AND status='learning' ORDER BY occurrences DESC,mastery_score ASC LIMIT 5");
+$q->execute(['id'=>$student['id']]);
+$data=['student'=>$student,'week'=>['start'=>$weekStart,'end'=>$weekEnd],'sessions'=>$sessionStats,'activities'=>$activityStats,'vocabulary'=>$wordStats,'weaknesses'=>$q->fetchAll()];
+json_response(['found'=>true,'report_data'=>$data]);

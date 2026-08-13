@@ -1,0 +1,357 @@
+{
+  "name": "RS English v6 - Relatorio Semanal",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RS English v6 — Relatório Semanal\nTroque SEU_DOMINIO, SUA_N8N_API_KEY, SUA_OPENAI_API_KEY, SEU_MODELO_OPENAI, SEU_EVOLUTION, SUA_EVOLUTION_API_KEY e SUA_INSTANCIA.\nAgendamento padrão: segunda-feira 08:00.",
+        "height": 260,
+        "width": 520
+      },
+      "id": "8109c2eb-4fca-4665-8e13-08ad355f99bd",
+      "name": "LEIA PRIMEIRO",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "02923b1a-70af-4131-90e4-9060ccfa69a7",
+      "name": "Relatório Semanal",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://SEU_DOMINIO/api/n8n/weekly-report-batch.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dd472a3c-23e9-42f7-a999-26b549ba0a56",
+      "name": "Listar Alunos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -580,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const students=Array.isArray($json.students)?$json.students:[]; return students.map(student=>({json:student}));"
+      },
+      "id": "c17f3314-8683-4329-b6b4-e3d9899ccc84",
+      "name": "Separar Alunos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://SEU_DOMINIO/api/n8n/weekly-report-data.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7c8dbbb0-527d-44d9-b938-85e382f0e412",
+      "name": "Buscar Dados Semana",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -90,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d=$json.report_data; const prompt=`Você é Emma, professora do RS English. Crie um relatório semanal curto para WhatsApp. DADOS: ${JSON.stringify(d)}. Regras: português; não invente dados; máximo 900 caracteres; inclua resumo, 2 evoluções, foco da próxima semana e mensagem final. Retorne somente a mensagem.`; return [{json:{...$json,teacher_prompt:prompt}}];"
+      },
+      "id": "63b72e2b-e11a-47c7-aeb9-9fe2a920149b",
+      "name": "Montar Prompt Relatório",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model:'SEU_MODELO_OPENAI', input:$json.teacher_prompt } }}",
+        "options": {}
+      },
+      "id": "822ed3b8-c5fd-4c76-a01f-33d614b1f323",
+      "name": "Gerar Relatório IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;let text=r.output_text;if(!text&&Array.isArray(r.output)){const p=[];for(const i of r.output){for(const c of(i.content??[])){if(typeof c.text==='string')p.push(c.text)}}text=p.join('\\n')}return [{json:{teacher_summary:String(text??'').trim()}}];"
+      },
+      "id": "36680ecc-008d-461b-b8ff-1e256ad722c8",
+      "name": "Extrair Relatório",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        670,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "efc5d7da-b8cb-48e8-b391-61a1a5504e58",
+      "name": "Juntar Dados + Relatório",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        900,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/n8n/save-weekly-report.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { phone:$json.report_data.student.phone, report_data:$json.report_data, teacher_summary:$json.teacher_summary } }}",
+        "options": {}
+      },
+      "id": "db05d56a-ed23-456e-ae7c-806e4147a9d5",
+      "name": "Salvar Relatório",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1150,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_EVOLUTION/message/sendText/SUA_INSTANCIA",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUA_EVOLUTION_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number:$json.report_data.student.phone, text:$json.teacher_summary } }}",
+        "options": {}
+      },
+      "id": "faf14633-2603-4c44-af6b-3d28a686c649",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1150,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Relatório Semanal": {
+      "main": [
+        [
+          {
+            "node": "Listar Alunos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listar Alunos": {
+      "main": [
+        [
+          {
+            "node": "Separar Alunos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar Alunos": {
+      "main": [
+        [
+          {
+            "node": "Buscar Dados Semana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Dados Semana": {
+      "main": [
+        [
+          {
+            "node": "Montar Prompt Relatório",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Dados + Relatório",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Prompt Relatório": {
+      "main": [
+        [
+          {
+            "node": "Gerar Relatório IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Relatório IA": {
+      "main": [
+        [
+          {
+            "node": "Extrair Relatório",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Relatório": {
+      "main": [
+        [
+          {
+            "node": "Juntar Dados + Relatório",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Dados + Relatório": {
+      "main": [
+        [
+          {
+            "node": "Salvar Relatório",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6f431e25-513c-4498-b2e4-8011743359c0",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

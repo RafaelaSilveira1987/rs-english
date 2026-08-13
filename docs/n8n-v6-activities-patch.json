@@ -1,0 +1,24 @@
+{
+  "version": "v6",
+  "goal": "Adicionar modo de atividade ao workflow principal",
+  "nodes": [
+    {
+      "name": "Buscar Próxima Atividade",
+      "method": "GET",
+      "url": "https://SEU_DOMINIO/api/n8n/next-activity.php",
+      "header": "X-API-Key: SUA_N8N_API_KEY",
+      "query": "phone={{ Normalizar Entrada.phone }}"
+    },
+    {
+      "name": "Concluir Atividade",
+      "method": "POST",
+      "url": "https://SEU_DOMINIO/api/n8n/complete-activity.php"
+    }
+  ],
+  "logic": [
+    "Se aluno pedir atividade/desafio/exercício, consultar next-activity.php",
+    "Teacher usa activity para criar UMA pergunta por vez",
+    "Evaluator calcula score",
+    "Ao finalizar, complete-activity.php soma XP e atualiza meta semanal"
+  ]
+}

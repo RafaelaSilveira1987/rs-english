@@ -1,0 +1,6 @@
+No templates/header.php, substitua os itens em breve por:
+
+<a class="<?= nav_active('activities.php') ? 'active' : '' ?>" href="/activities.php"><span class="nav-dot"></span> Atividades</a>
+<a class="<?= nav_active('reports.php') ? 'active' : '' ?>" href="/reports.php"><span class="nav-dot"></span> Relatórios</a>
+
+Menu sugerido: Dashboard, Alunos, Atividades, Conteúdos, Currículo, Relatórios.

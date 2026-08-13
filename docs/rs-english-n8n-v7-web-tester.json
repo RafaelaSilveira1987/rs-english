@@ -1,0 +1,427 @@
+{
+  "name": "RS English v7 - Web Tester",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RS English — Web Tester\n\nPermite conversar com Emma pelo painel sem WhatsApp.\n\nTroque:\n- `https://SEU_DOMINIO`\n- `SUA_N8N_API_KEY`\n- `SUA_OPENAI_API_KEY`\n- `SEU_MODELO_OPENAI`\n\nWebhook:\n`/rs-english-web`\n\nNo EasyPanel:\n`N8N_WEB_TEACHER_URL=https://SEU_N8N/webhook/rs-english-web`",
+        "height": 280,
+        "width": 500
+      },
+      "id": "86976adc-9ae1-4921-9686-a5e39858fa99",
+      "name": "LEIA PRIMEIRO",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        -380
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rs-english-web",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "9b63001d-a56e-49f1-bedf-946322b38d15",
+      "name": "Webhook Web",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        0
+      ],
+      "webhookId": "ad6ce486-5a69-4f7d-9e78-01b16dcad9de"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b=$json.body??$json;\nreturn [{json:{\n  student_id:b.student_id??'',\n  name:b.name??'Aluno',\n  phone:String(b.phone??'').replace(/\\D/g,''),\n  message:String(b.message??'').trim(),\n  message_type:'text',\n  channel:'web'\n}}];"
+      },
+      "id": "d58866b7-603f-44b1-9717-3c55e7e777b7",
+      "name": "Normalizar Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://SEU_DOMINIO/api/n8n/context.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "832da972-c142-44a8-bc24-b8696d9fe954",
+      "name": "Buscar Contexto PHP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "b846eb1a-2db0-4491-810d-ed54c55e661f",
+      "name": "Juntar Entrada + Contexto",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j=$json,s=j.student||{};\nconst due=j.reviews_due||{vocabulary:[],errors:[],total:0};\n\nconst teacherPrompt=`\nVocê é Emma, professora particular de inglês do RS English.\n\nAluno: ${s.name||j.name||'Aluno'}\nNível: ${s.overall_level||'A1'}\nObjetivo: ${s.goal||'Aprender inglês'}\nCorreção: ${s.correction_mode||'balanced'}\n\nPlano:\n${JSON.stringify(j.active_plan||{})}\n\nFragilidades:\n${JSON.stringify(j.weaknesses||[])}\n\nRevisões:\n${JSON.stringify(due)}\n\nHistórico:\n${JSON.stringify(j.recent_messages||[])}\n\nMensagem atual:\n${j.message}\n\nRegras:\n- converse principalmente em inglês;\n- para A1/A2 use português só se realmente ajudar;\n- no máximo 1 ou 2 correções importantes;\n- continue com uma pergunta curta ou microatividade;\n- não invente evolução;\n- não altere oficialmente o nível CEFR.\n\nResponda somente a mensagem para o aluno.\n`.trim();\n\nconst evaluatorPrompt=`\nAvalie silenciosamente:\n${j.message}\n\nNível: ${s.overall_level||'A1'}\n\nRetorne SOMENTE JSON:\n{\n \"grammar_score\":0,\n \"vocabulary_score\":0,\n \"fluency_score\":0,\n \"comprehension_score\":0,\n \"errors\":[],\n \"skills\":[],\n \"vocabulary\":[],\n \"review_results\":[],\n \"error_review_results\":[]\n}\n`.trim();\n\nreturn [{json:{...j,teacher_prompt:teacherPrompt,evaluator_prompt:evaluatorPrompt}}];"
+      },
+      "id": "41183fed-4c97-43ab-be29-3ef37b35dbc0",
+      "name": "Montar Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        170,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model:'SEU_MODELO_OPENAI', input:$json.teacher_prompt } }}",
+        "options": {}
+      },
+      "id": "43762943-3843-43be-8bdc-6434ddb1e9af",
+      "name": "Teacher IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        430,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;\nlet text=r.output_text;\nif(!text&&Array.isArray(r.output)){\n const p=[];\n for(const item of r.output){\n  for(const c of(item.content??[])){\n   if(typeof c.text==='string')p.push(c.text)\n  }\n }\n text=p.join('\\n');\n}\nreturn [{json:{teacher_message:String(text??'').trim()}}];"
+      },
+      "id": "a4e7b234-c791-4573-9c1d-1b4289ce57bd",
+      "name": "Extrair Teacher",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUA_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model:'SEU_MODELO_OPENAI', input:$json.evaluator_prompt } }}",
+        "options": {}
+      },
+      "id": "2d68957a-acbc-4938-8adc-dfd8ed941d04",
+      "name": "Evaluator IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        430,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;\nlet text=r.output_text;\nif(!text&&Array.isArray(r.output)){\n const p=[];\n for(const item of r.output){\n  for(const c of(item.content??[])){\n   if(typeof c.text==='string')p.push(c.text)\n  }\n }\n text=p.join('\\n');\n}\ntext=String(text??'').replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim();\nlet evaluation;\ntry{evaluation=JSON.parse(text)}\ncatch(e){evaluation={grammar_score:null,vocabulary_score:null,fluency_score:null,comprehension_score:null,errors:[],skills:[],vocabulary:[],review_results:[],error_review_results:[]}}\nreturn [{json:{evaluation}}];"
+      },
+      "id": "fad9e961-275b-4aaf-b793-f6c66938c4f2",
+      "name": "Extrair Avaliação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "83a4fed0-33b1-463d-aec2-033d3dcd590a",
+      "name": "Juntar Teacher + Contexto",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        920,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "f99e5fef-84f3-4976-86a0-2909bdb09959",
+      "name": "Juntar Avaliação",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1160,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/n8n/save-interaction.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "SUA_N8N_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { phone:$json.phone, student_name:$json.name, student_message:$json.message, teacher_message:$json.teacher_message, message_type:'text', mode:'conversation', topic:'web_practice', evaluation:$json.evaluation } }}",
+        "options": {}
+      },
+      "id": "4c7c8fba-bbf9-47da-b797-750da1b5fbcf",
+      "name": "Salvar Interação PHP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { teacher_message:$json.teacher_message, evaluation:$json.evaluation } }}",
+        "options": {}
+      },
+      "id": "9b1c8735-a788-4665-a7b1-407df7d6b68e",
+      "name": "Responder Web",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1400,
+        150
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Web": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Web": {
+      "main": [
+        [
+          {
+            "node": "Buscar Contexto PHP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Entrada + Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Contexto PHP": {
+      "main": [
+        [
+          {
+            "node": "Juntar Entrada + Contexto",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Entrada + Contexto": {
+      "main": [
+        [
+          {
+            "node": "Montar Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Prompt": {
+      "main": [
+        [
+          {
+            "node": "Teacher IA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Evaluator IA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Teacher + Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teacher IA": {
+      "main": [
+        [
+          {
+            "node": "Extrair Teacher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Teacher": {
+      "main": [
+        [
+          {
+            "node": "Juntar Teacher + Contexto",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Teacher + Contexto": {
+      "main": [
+        [
+          {
+            "node": "Juntar Avaliação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluator IA": {
+      "main": [
+        [
+          {
+            "node": "Extrair Avaliação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Avaliação": {
+      "main": [
+        [
+          {
+            "node": "Juntar Avaliação",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Avaliação": {
+      "main": [
+        [
+          {
+            "node": "Salvar Interação PHP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Responder Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cc37fc77-d7e8-47d1-9383-fc736f9302b5",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
