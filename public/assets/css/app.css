@@ -486,6 +486,83 @@ input:focus,select:focus,textarea:focus{
 .achievement strong{display:block;font-size:13px}
 .achievement span{font-size:11px;color:var(--muted)}
 
+.practice-tabs{
+    display:flex;
+    gap:10px;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+}
+
+.voice-chat{
+    height:420px;
+    overflow:auto;
+    padding:6px;
+}
+
+.practice-compose{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:10px;
+    margin-top:15px;
+}
+
+.voice-recorder{
+    border:1px solid var(--border);
+    background:var(--surface-soft);
+    border-radius:18px;
+    padding:22px;
+    display:grid;
+    gap:18px;
+}
+
+.voice-status{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+.record-dot{
+    width:12px;
+    height:12px;
+    border-radius:50%;
+    background:#9aa3b4;
+}
+
+.record-dot.recording{
+    background:#d65454;
+    animation:voicePulse 1s infinite;
+}
+
+.voice-actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+}
+
+.voice-recorder audio{
+    width:100%;
+}
+
+#voice-result{
+    margin-top:20px;
+}
+
+@keyframes voicePulse{
+    0%,100%{transform:scale(1);opacity:1}
+    50%{transform:scale(1.45);opacity:.55}
+}
+
+@media(max-width:560px){
+    .practice-compose{
+        grid-template-columns:1fr;
+    }
+
+    .practice-compose .btn{
+        width:100%;
+    }
+}
+
 @media (max-width:1100px){
     .cards{grid-template-columns:repeat(2,1fr)}
     .grid-2{grid-template-columns:1fr}

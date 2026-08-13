@@ -1,181 +1,108 @@
-# RS English v7 — Finalização da plataforma antes do WhatsApp
+# RS English v10 — Conversação por voz
 
-Esta etapa permite concluir o produto principal e testar o professor pelo navegador
-enquanto o canal WhatsApp está indisponível.
+## Resultado
 
-## O que foi concluído
+### Web
+- gravação pelo microfone;
+- pré-escuta;
+- transcrição;
+- conversa com a Emma;
+- avaliação pelo fluxo já existente;
+- resposta escrita;
+- resposta falada;
+- autoplay configurável;
+- armazenamento do histórico de voz.
 
-### Usuários
-- login em PostgreSQL;
-- perfis `admin`, `teacher`, `student`;
-- senha com `password_hash`;
-- fallback temporário para `ADMIN_USER`/`ADMIN_PASSWORD`;
-- vínculo automático entre usuário aluno e `students`.
+### WhatsApp
+A v10 deixa prontos os endpoints reutilizáveis para:
+- transcrever o áudio recebido;
+- gerar o áudio da Emma;
+- devolver base64 para o n8n;
+- enviar pela Evolution como áudio/PTT.
 
-### Portal do aluno
-- progresso;
-- nível e meta;
-- competências;
-- XP;
-- streak;
-- revisões;
-- atividades;
-- vocabulário;
-- preferências de estudo;
-- Web Tester.
+A conexão final do PTT será feita quando a Evolution API estiver estável.
 
-### Configuração do professor
-- nome;
-- personalidade;
-- correção;
-- idioma;
-- máximo de correções por resposta.
+## Instalação
 
-### Produto
-- organizações;
-- base multi-tenant;
-- planos;
-- subscriptions;
-- auditoria;
-- settings.
+### 1. Migration
+Execute:
 
-### Canal Web
-Novo workflow:
-`rs-english-n8n-v7-web-tester.json`
+`database/023_voice_conversation.sql`
 
-Assim podemos validar:
-Painel → PHP → n8n → Teacher → Evaluator → PostgreSQL
-sem Evolution API.
+### 2. Backend
+Adicione:
 
----
+- `src/audio.php`
+- `public/api/voice/transcribe.php`
+- `public/api/voice/synthesize.php`
+- `public/api/web/voice.php`
+- `public/voice-media.php`
 
-# INSTALAÇÃO
-
-## 1. Adminer
-
-Execute na ordem:
-
-1. `database/017_auth_multiuser.sql`
-2. `database/018_preferences_settings.sql`
-3. `database/019_plans_subscriptions.sql`
-4. `database/020_audit_settings.sql`
-
-## 2. PHP
-
+### 3. Portal
 Substitua:
-- `src/auth.php`
-- `public/login.php`
-- `public/logout.php`
 
-Adicione:
-
-### Admin
-- `public/admin/users.php`
-- `public/admin/teacher-settings.php`
-
-### Portal
-- `public/portal/index.php`
 - `public/portal/practice.php`
-- `public/portal/activities.php`
-- `public/portal/vocabulary.php`
-- `public/portal/onboarding.php`
-
-### Proxy Web
-- `public/api/web/teacher.php`
-
-## 3. Menu
-
-Leia:
-`HEADER-V7.txt`
-
-Não substituí o header completo porque você já está com o style da v4/v5/v6.
-Adicione apenas os links e condições de perfil.
-
-## 4. n8n
-
-Importe:
-`rs-english-n8n-v7-web-tester.json`
-
-Troque:
-- `https://SEU_DOMINIO`
-- `SUA_N8N_API_KEY`
-- `SUA_OPENAI_API_KEY`
-- `SEU_MODELO_OPENAI`
-
-Ative o workflow.
-
-A URL final será:
-`https://SEU_N8N/webhook/rs-english-web`
-
-## 5. EasyPanel
 
 Adicione:
-`N8N_WEB_TEACHER_URL=https://SEU_N8N/webhook/rs-english-web`
 
-Faça redeploy do serviço PHP.
+- `public/assets/js/voice-practice.js`
 
-## 6. Primeiro usuário aluno
+Anexe o conteúdo de:
 
-Acesse:
-`/admin/users.php`
+- `public/assets/css/v10-append.css`
 
-Crie:
-- nome;
-- username;
-- telefone;
-- senha;
-- role = student.
+ao final do seu:
 
-O sistema:
-1. procura `students` pelo telefone;
-2. se não encontrar, cria;
-3. cria `student_profiles`;
-4. cria `app_users` ligado ao aluno.
+- `public/assets/css/app.css`
 
-Depois faça logout e entre com o usuário do aluno.
+### 4. EasyPanel
+Adicione:
 
-Ele será redirecionado para:
-`/portal/index.php`
+```env
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+```
 
-## 7. Testar sem WhatsApp
+Mantenha:
 
-Entre como aluno e acesse:
+```env
+OPENAI_API_KEY=...
+N8N_WEB_TEACHER_URL=...
+N8N_API_KEY=...
+```
+
+### 5. Volume
+Crie volume persistente:
+
+`/var/www/html/storage/voice`
+
+### 6. Docker
+Confira:
+
+`docs/DOCKER-V10.txt`
+
+### 7. Teste Web
+Entre como aluno:
+
 `/portal/practice.php`
 
-Fluxo:
-Browser
-→ `/api/web/teacher.php`
-→ n8n `/webhook/rs-english-web`
-→ context.php
-→ Teacher
-→ Evaluator
-→ save-interaction.php
-→ retorna para o navegador
+Selecione:
 
-O mesmo PostgreSQL é usado. Portanto:
-- erros;
-- vocabulário;
-- XP;
-- histórico;
-- skills;
-- progresso
+`Conversar por áudio`
 
-continuam sendo registrados normalmente.
+Grave uma frase em inglês e envie.
 
----
+A resposta deverá trazer:
+- transcrição;
+- texto da Emma;
+- player com a voz da Emma.
 
-# O QUE FICA PARA DEPOIS DA VALIDAÇÃO
+### 8. WhatsApp
+Leia:
 
-O núcleo de produto estará pronto.
+`docs/WHATSAPP-VOICE-INTEGRATION.md`
 
-Pontos opcionais/futuros:
-- gateway real de pagamento;
-- e-mail de recuperação de senha;
-- convite por e-mail;
-- pgvector para bases RAG grandes;
-- app mobile/PWA;
-- white-label;
-- painel avançado de escola/professores;
-- retomada do WhatsApp/Evolution.
-
-O WhatsApp passa a ser somente mais um canal, não um bloqueio do projeto.
+## Observação pedagógica
+A transcrição permite avaliar conteúdo, gramática, vocabulário, compreensão
+e parte da fluência conversacional. Ela não é suficiente para afirmar uma
+nota precisa de pronúncia. A análise de pronúncia será uma etapa específica.

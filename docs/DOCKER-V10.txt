@@ -1,0 +1,15 @@
+No Dockerfile PHP, confirme que a extensão curl está habilitada:
+
+RUN apt-get update \
+    && apt-get install -y libpq-dev libcurl4-openssl-dev \
+    && docker-php-ext-install pdo_pgsql curl \
+    && rm -rf /var/lib/apt/lists/*
+
+Crie volume persistente para:
+
+/var/www/html/storage/voice
+
+Garanta permissão:
+
+RUN mkdir -p /var/www/html/storage/voice \
+    && chown -R www-data:www-data /var/www/html/storage

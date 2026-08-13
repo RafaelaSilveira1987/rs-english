@@ -1,0 +1,40 @@
+Na página public/portal/onboarding.php, adicione ao formulário:
+
+<div class="form-row">
+    <label>Como a Emma deve responder?</label>
+    <select name="response_mode">
+        <option value="automatic">Automático</option>
+        <option value="text">Somente texto</option>
+        <option value="audio">Somente áudio</option>
+        <option value="text_audio">Texto + áudio</option>
+    </select>
+</div>
+
+<div class="grid-2" style="grid-template-columns:1fr 1fr">
+    <div class="form-row">
+        <label>Voz da Emma</label>
+        <select name="voice_name">
+            <option value="coral">Coral</option>
+            <option value="nova">Nova</option>
+            <option value="sage">Sage</option>
+            <option value="shimmer">Shimmer</option>
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label>Velocidade</label>
+        <select name="voice_speed">
+            <option value="0.85">Mais lenta</option>
+            <option value="1.00">Normal</option>
+            <option value="1.15">Mais rápida</option>
+        </select>
+    </div>
+</div>
+
+<label>
+    <input type="checkbox" name="autoplay_audio" value="1">
+    Reproduzir automaticamente a resposta
+</label>
+
+Atualize também o UPDATE de student_preferences para gravar:
+response_mode, voice_name, voice_speed, autoplay_audio, show_transcription.

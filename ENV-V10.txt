@@ -1,0 +1,12 @@
+# OpenAI
+OPENAI_API_KEY=...
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+
+# n8n
+N8N_WEB_TEACHER_URL=https://SEU_N8N/webhook/rs-english-web
+N8N_API_KEY=...
+
+# PHP
+upload_max_filesize=16M
+post_max_size=18M
