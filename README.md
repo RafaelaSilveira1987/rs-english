@@ -1,119 +1,181 @@
-# RS English — PHP + PostgreSQL + n8n
+# RS English v7 — Finalização da plataforma antes do WhatsApp
 
-MVP para acompanhamento de alunos de inglês com:
+Esta etapa permite concluir o produto principal e testar o professor pelo navegador
+enquanto o canal WhatsApp está indisponível.
 
-- painel administrativo em PHP;
-- PostgreSQL;
-- acompanhamento de progresso;
-- histórico de sessões;
-- erros recorrentes;
+## O que foi concluído
+
+### Usuários
+- login em PostgreSQL;
+- perfis `admin`, `teacher`, `student`;
+- senha com `password_hash`;
+- fallback temporário para `ADMIN_USER`/`ADMIN_PASSWORD`;
+- vínculo automático entre usuário aluno e `students`.
+
+### Portal do aluno
+- progresso;
+- nível e meta;
+- competências;
+- XP;
+- streak;
+- revisões;
+- atividades;
 - vocabulário;
-- endpoints para integração com n8n/WhatsApp;
-- arquitetura simples para EasyPanel.
+- preferências de estudo;
+- Web Tester.
 
-## Arquitetura
+### Configuração do professor
+- nome;
+- personalidade;
+- correção;
+- idioma;
+- máximo de correções por resposta.
 
-WhatsApp -> Evolution API -> n8n -> RS English API (PHP) -> PostgreSQL
+### Produto
+- organizações;
+- base multi-tenant;
+- planos;
+- subscriptions;
+- auditoria;
+- settings.
 
-Painel Web -> PHP -> PostgreSQL
+### Canal Web
+Novo workflow:
+`rs-english-n8n-v7-web-tester.json`
 
-O n8n fica responsável por:
-1. receber mensagem do WhatsApp;
-2. transcrever áudio quando necessário;
-3. buscar contexto pedagógico na API;
-4. chamar Teacher IA;
-5. chamar Evaluator IA;
-6. salvar a interação pela API;
-7. responder via Evolution API.
+Assim podemos validar:
+Painel → PHP → n8n → Teacher → Evaluator → PostgreSQL
+sem Evolution API.
 
-## EasyPanel
+---
 
-Crie um serviço App usando este repositório e o Dockerfile.
+# INSTALAÇÃO
 
-Porta interna:
-80
+## 1. Adminer
 
-Variáveis:
-copie `.env.example` para as variáveis de ambiente do EasyPanel.
+Execute na ordem:
 
-Não publique a porta 5432 do PostgreSQL.
+1. `database/017_auth_multiuser.sql`
+2. `database/018_preferences_settings.sql`
+3. `database/019_plans_subscriptions.sql`
+4. `database/020_audit_settings.sql`
 
-## URLs principais
+## 2. PHP
 
-- `/login.php`
-- `/index.php`
-- `/students.php`
-- `/student.php?id=UUID`
-- `/api/health.php`
+Substitua:
+- `src/auth.php`
+- `public/login.php`
+- `public/logout.php`
 
-### n8n
+Adicione:
 
-Buscar contexto:
-`GET /api/n8n/context.php?phone=5532...`
+### Admin
+- `public/admin/users.php`
+- `public/admin/teacher-settings.php`
 
-Header:
-`X-API-Key: SUA_CHAVE`
+### Portal
+- `public/portal/index.php`
+- `public/portal/practice.php`
+- `public/portal/activities.php`
+- `public/portal/vocabulary.php`
+- `public/portal/onboarding.php`
 
-Salvar interação:
-`POST /api/n8n/save-interaction.php`
+### Proxy Web
+- `public/api/web/teacher.php`
 
-Header:
-`X-API-Key: SUA_CHAVE`
-`Content-Type: application/json`
+## 3. Menu
 
-Exemplo:
-```json
-{
-  "phone": "5532980000000",
-  "student_name": "Rafaela",
-  "student_message": "Yesterday I go to supermarket",
-  "teacher_message": "A more natural way is: Yesterday I went to the supermarket.",
-  "message_type": "text",
-  "mode": "conversation",
-  "topic": "daily routine",
-  "evaluation": {
-    "grammar_score": 60,
-    "vocabulary_score": 78,
-    "fluency_score": 70,
-    "comprehension_score": 85,
-    "errors": [
-      {
-        "category": "grammar",
-        "topic": "past_simple",
-        "original": "I go",
-        "corrected": "I went",
-        "explanation": "Use past simple for completed actions.",
-        "severity": "medium"
-      }
-    ],
-    "skills": [
-      {
-        "code": "past_simple",
-        "score": 60,
-        "success": false
-      }
-    ]
-  }
-}
-```
+Leia:
+`HEADER-V7.txt`
 
-## Banco
+Não substituí o header completo porque você já está com o style da v4/v5/v6.
+Adicione apenas os links e condições de perfil.
 
-O projeto pressupõe as tabelas criadas anteriormente:
-- students
-- student_profiles
-- skills
-- student_skills
-- sessions
-- messages
-- student_errors
-- vocabulary
-- student_vocabulary
-- activities
-- student_activities
-- assessments
-- assessment_results
-- knowledge_sources
+## 4. n8n
 
-Execute também:
-`database/012_php_api_indexes.sql`
+Importe:
+`rs-english-n8n-v7-web-tester.json`
+
+Troque:
+- `https://SEU_DOMINIO`
+- `SUA_N8N_API_KEY`
+- `SUA_OPENAI_API_KEY`
+- `SEU_MODELO_OPENAI`
+
+Ative o workflow.
+
+A URL final será:
+`https://SEU_N8N/webhook/rs-english-web`
+
+## 5. EasyPanel
+
+Adicione:
+`N8N_WEB_TEACHER_URL=https://SEU_N8N/webhook/rs-english-web`
+
+Faça redeploy do serviço PHP.
+
+## 6. Primeiro usuário aluno
+
+Acesse:
+`/admin/users.php`
+
+Crie:
+- nome;
+- username;
+- telefone;
+- senha;
+- role = student.
+
+O sistema:
+1. procura `students` pelo telefone;
+2. se não encontrar, cria;
+3. cria `student_profiles`;
+4. cria `app_users` ligado ao aluno.
+
+Depois faça logout e entre com o usuário do aluno.
+
+Ele será redirecionado para:
+`/portal/index.php`
+
+## 7. Testar sem WhatsApp
+
+Entre como aluno e acesse:
+`/portal/practice.php`
+
+Fluxo:
+Browser
+→ `/api/web/teacher.php`
+→ n8n `/webhook/rs-english-web`
+→ context.php
+→ Teacher
+→ Evaluator
+→ save-interaction.php
+→ retorna para o navegador
+
+O mesmo PostgreSQL é usado. Portanto:
+- erros;
+- vocabulário;
+- XP;
+- histórico;
+- skills;
+- progresso
+
+continuam sendo registrados normalmente.
+
+---
+
+# O QUE FICA PARA DEPOIS DA VALIDAÇÃO
+
+O núcleo de produto estará pronto.
+
+Pontos opcionais/futuros:
+- gateway real de pagamento;
+- e-mail de recuperação de senha;
+- convite por e-mail;
+- pgvector para bases RAG grandes;
+- app mobile/PWA;
+- white-label;
+- painel avançado de escola/professores;
+- retomada do WhatsApp/Evolution.
+
+O WhatsApp passa a ser somente mais um canal, não um bloqueio do projeto.
