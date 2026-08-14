@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 date_default_timezone_set(getenv('APP_TIMEZONE') ?: 'America/Sao_Paulo');
 
-function env(string $key, ?string $default = null): ?string
+function env(string $key, mixed $default = null): mixed
 {
     $value = getenv($key);
-    return ($value === false || $value === '') ? $default : $value;
+
+    if ($value === false || $value === '') {
+        return $_ENV[$key] ?? $_SERVER[$key] ?? $default;
+    }
+
+    return $value;
 }
