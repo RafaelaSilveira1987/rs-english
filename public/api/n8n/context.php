@@ -187,20 +187,27 @@ if (!$student) {
             );
         }
     } catch (Throwable $exception) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-
-        error_log(
-            '[RS ENGLISH CONTEXT] Erro ao criar aluno: '
-            . $exception->getMessage()
-        );
-
-        json_response([
-            'ok' => false,
-            'error' => 'Não foi possível criar o aluno.',
-        ], 500);
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
     }
+
+    error_log(
+        '[RS ENGLISH CONTEXT] '
+        . get_class($exception)
+        . ': '
+        . $exception->getMessage()
+    );
+
+    json_response([
+        'ok' => false,
+        'error' => 'Não foi possível criar o aluno.',
+        'exception' => get_class($exception),
+        'details' => $exception->getMessage(),
+        'sql_state' => $exception instanceof PDOException
+            ? $exception->getCode()
+            : null,
+    ], 500);
+}
 }
 
 /*
