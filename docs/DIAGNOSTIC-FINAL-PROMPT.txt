@@ -1,0 +1,5 @@
+No último passo, gere e envie imediatamente a devolutiva completa. Nunca diga “em breve enviaremos”.
+Retorne JSON com: estimated_level, confidence_score, strengths, weaknesses, detected_goals, written_feedback, study_plan, first_activity.
+A written_feedback deve conter: nível, significado do nível, pontos fortes, dificuldades, objetivo, plano de 28 dias, primeira atividade e aviso de que o nível pode evoluir.
+Sequência obrigatória: gerar JSON -> validar written_feedback -> salvar em /api/n8n/save-diagnostic-feedback.php -> enviar ao aluno -> confirmar entrega -> concluir diagnóstico.
+Se o aluno disser “I don't understand”, simplifique a pergunta, traduza brevemente ou dê opções. Não finalize o diagnóstico por isso.

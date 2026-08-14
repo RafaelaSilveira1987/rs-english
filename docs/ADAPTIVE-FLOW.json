@@ -1,0 +1,21 @@
+{
+  "welcome_message": "Olá! Eu sou a Emma, sua professora de inglês. 😊",
+  "options": {
+    "1": {
+      "level": "PRE-A1",
+      "support": "portuguese"
+    },
+    "2": {
+      "level": "A1",
+      "support": "portuguese_support"
+    },
+    "3": {
+      "level": "A1",
+      "support": "adaptive"
+    },
+    "4": {
+      "level": "A2",
+      "support": "english"
+    }
+  }
+}

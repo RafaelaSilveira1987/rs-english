@@ -1,0 +1,3 @@
+Acrescente ao JSON do Evaluator um campo corrections com itens: correction_type, original_text, corrected_text, explanation, confidence_score, accepted.
+Tipos: written, grammar, vocabulary, word_order, spoken_transcript, pronunciation_target.
+Envie para POST /api/n8n/save-corrections.php.
