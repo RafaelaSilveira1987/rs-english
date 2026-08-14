@@ -106,3 +106,33 @@ Leia:
 A transcrição permite avaliar conteúdo, gramática, vocabulário, compreensão
 e parte da fluência conversacional. Ela não é suficiente para afirmar uma
 nota precisa de pronúncia. A análise de pronúncia será uma etapa específica.
+
+---
+
+## Atualização v10.3 — agosto de 2026
+
+Esta versão inclui:
+
+- cadastro automático de aluno pelo `context.php`;
+- retorno padronizado de `student_id`;
+- suporte completo a `PRE-A1`;
+- classificação oficial ao concluir o diagnóstico;
+- registro correto de mensagem de texto ou áudio;
+- relatório detalhado do diagnóstico;
+- persistência das correções durante o diagnóstico;
+- endpoint de correções mais tolerante, com fallback por telefone;
+- Dockerfile consolidado e diretório de voz preparado;
+- prompt revisado: correção em português e continuidade em inglês;
+- guia dos ajustes manuais do n8n.
+
+Para banco existente, execute por último:
+
+```text
+database/026_pre_a1_context_voice_fixes.sql
+```
+
+Os ajustes do workflow permanecem documentados em:
+
+```text
+docs/N8N-MANUAL-ADJUSTMENTS-V10.3.md
+```

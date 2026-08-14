@@ -1,6 +1,0 @@
-# Novas variáveis
-N8N_WEB_TEACHER_URL=https://SEU_N8N/webhook/rs-english-web
-
-# Mantidas
-N8N_API_KEY=...
-OPENAI_API_KEY=...
