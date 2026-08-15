@@ -12,6 +12,10 @@ $raw=file_get_contents('php://input');
 $data=json_decode($raw ?: '{}',true);
 
 $message=trim((string)($data['message'] ?? ''));
+$topic=trim((string)($data['topic'] ?? 'daily_life'));
+$style=trim((string)($data['style'] ?? 'guided'));
+$correctionMode=trim((string)($data['correction_mode'] ?? 'balanced'));
+$maxTurns=max(4,min(30,(int)($data['max_turns'] ?? 10)));
 
 if($message===''){
     http_response_code(422);
@@ -33,7 +37,14 @@ $payload=[
     'phone'=>$user['phone'],
     'message'=>$message,
     'message_type'=>'text',
-    'channel'=>'web'
+    'channel'=>'web',
+    'mode'=>'conversation',
+    'topic'=>$topic,
+    'conversation'=>[
+        'style'=>$style,
+        'max_turns'=>$maxTurns
+    ],
+    'correction_mode'=>$correctionMode
 ];
 
 $ch=curl_init($url);

@@ -3,7 +3,7 @@ ALTER TABLE student_profiles
     ADD COLUMN IF NOT EXISTS diagnostic_step INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS diagnostic_started_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS diagnostic_completed_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS estimated_level VARCHAR(5);
+    ADD COLUMN IF NOT EXISTS estimated_level VARCHAR(10);
 
 CREATE TABLE IF NOT EXISTS study_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS study_plans (
     start_date DATE NOT NULL DEFAULT CURRENT_DATE,
     end_date DATE,
     goal TEXT,
-    target_level VARCHAR(5),
+    target_level VARCHAR(10),
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     plan_data JSONB NOT NULL DEFAULT '{}'::jsonb
 );

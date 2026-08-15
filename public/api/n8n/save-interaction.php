@@ -1,122 +1,707 @@
 <?php
+
 declare(strict_types=1);
+
 require_once __DIR__ . '/../../../src/db.php';
 require_once __DIR__ . '/../../../src/api.php';
+require_once __DIR__ . '/../../../src/conversation.php';
+
 require_n8n_key();
 
-$data=json_input();
-$phone=normalize_phone($data['phone']??'');
-$name=trim($data['student_name']??'Aluno');
-$studentMessage=trim($data['student_message']??'');
-$teacherMessage=trim($data['teacher_message']??'');
-$messageType=trim($data['message_type']??'text');
-$mode=trim($data['mode']??'conversation');
-$topic=trim($data['topic']??'');
-$evaluation=is_array($data['evaluation']??null)?$data['evaluation']:[];
-if(!$phone||!$studentMessage) json_response(['error'=>'phone e student_message são obrigatórios'],422);
+$data = json_input();
 
-function clamp_score_v4($v){return max(0,min(100,(float)$v));}
-function canonical_key_v4(array $e):string{
-  $s=strtolower(trim((string)($e['topic']??$e['category']??'other')));
-  $s=preg_replace('/[^a-z0-9_]+/i','_',$s); return trim($s,'_')?:'other';
+$phone = normalize_phone($data['phone'] ?? '');
+$name = trim((string)($data['student_name'] ?? 'Aluno'));
+$studentMessage = trim((string)($data['student_message'] ?? ''));
+$teacherMessage = trim((string)($data['teacher_message'] ?? ''));
+$messageType = trim((string)($data['message_type'] ?? 'text'));
+$mode = conversation_mode(trim((string)($data['mode'] ?? 'conversation')));
+$topic = conversation_topic((string)($data['topic'] ?? ''));
+$evaluation = is_array($data['evaluation'] ?? null)
+    ? $data['evaluation']
+    : [];
+
+$conversationInput = is_array($data['conversation'] ?? null)
+    ? $data['conversation']
+    : [];
+
+$conversationStyle = conversation_style(
+    (string)($conversationInput['style'] ?? $data['conversation_style'] ?? 'guided')
+);
+
+$maxTurns = conversation_max_turns(
+    $conversationInput['max_turns'] ?? $data['max_turns'] ?? 10
+);
+
+$sessionEnd = !empty($data['session_end'])
+    || !empty($evaluation['session_complete']);
+
+$sessionSummary = trim((string)(
+    $data['session_summary']
+    ?? $evaluation['session_summary']
+    ?? ''
+));
+
+$summaryData = is_array($data['summary_data'] ?? null)
+    ? $data['summary_data']
+    : (is_array($evaluation['summary_data'] ?? null)
+        ? $evaluation['summary_data']
+        : []);
+
+if ($phone === '' || $studentMessage === '') {
+    json_response([
+        'success' => false,
+        'error' => 'phone e student_message são obrigatórios',
+    ], 422);
 }
-function normalize_word_v4(string $w):string{return preg_replace('/\s+/',' ',trim(mb_strtolower($w)));}
 
-$pdo=db();
-try{
-  $pdo->beginTransaction();
-  $q=$pdo->prepare("SELECT id FROM students WHERE phone=:phone LIMIT 1"); $q->execute(['phone'=>$phone]); $studentId=$q->fetchColumn();
-  if(!$studentId){
-    $q=$pdo->prepare("INSERT INTO students(name,phone) VALUES(:name,:phone) RETURNING id"); $q->execute(['name'=>$name?:'Aluno','phone'=>$phone]); $studentId=$q->fetchColumn();
-    $pdo->prepare("INSERT INTO student_profiles(student_id,overall_level,goal,correction_mode,diagnostic_status,diagnostic_step)
-    VALUES(:id,'A1','Aprender inglês','balanced','pending',0)")->execute(['id'=>$studentId]);
-  }
+if (!in_array($messageType, ['text', 'audio'], true)) {
+    $messageType = 'text';
+}
 
-  $q=$pdo->prepare("SELECT id FROM sessions WHERE student_id=:id AND status='active' AND mode=:mode AND created_at>=NOW()-INTERVAL '4 hours' ORDER BY created_at DESC LIMIT 1");
-  $q->execute(['id'=>$studentId,'mode'=>$mode]); $sessionId=$q->fetchColumn();
-  if(!$sessionId){
-    $q=$pdo->prepare("INSERT INTO sessions(student_id,channel,mode,topic,status) VALUES(:id,'whatsapp',:mode,:topic,'active') RETURNING id");
-    $q->execute(['id'=>$studentId,'mode'=>$mode,'topic'=>$topic?:null]); $sessionId=$q->fetchColumn();
-  }
+function clamp_score_v104(mixed $value): float
+{
+    return max(0, min(100, (float)$value));
+}
 
-  $q=$pdo->prepare("INSERT INTO messages(session_id,student_id,role,message_type,content,transcription)
-  VALUES(:sid,:id,'student',:type,:content,:transcription) RETURNING id");
-  $q->execute(['sid'=>$sessionId,'id'=>$studentId,'type'=>$messageType,'content'=>$studentMessage,'transcription'=>$messageType==='audio'?$studentMessage:null]);
-  $messageId=$q->fetchColumn();
-  if($teacherMessage!=='') $pdo->prepare("INSERT INTO messages(session_id,student_id,role,message_type,content) VALUES(:sid,:id,'teacher','text',:content)")
-    ->execute(['sid'=>$sessionId,'id'=>$studentId,'content'=>$teacherMessage]);
+function canonical_key_v104(array $error): string
+{
+    $key = strtolower(trim((string)(
+        $error['topic']
+        ?? $error['category']
+        ?? 'other'
+    )));
 
-  foreach(($evaluation['errors']??[]) as $e){
-    if(!is_array($e)) continue; $key=canonical_key_v4($e);
-    $q=$pdo->prepare("SELECT id FROM student_errors WHERE student_id=:id AND canonical_key=:k AND status='learning' LIMIT 1");
-    $q->execute(['id'=>$studentId,'k'=>$key]); $existing=$q->fetchColumn();
-    if($existing){
-      $pdo->prepare("UPDATE student_errors SET category=COALESCE(:category,category),topic=COALESCE(:topic,topic),original_text=COALESCE(:original,original_text),
-      corrected_text=COALESCE(:corrected,corrected_text),explanation=COALESCE(:explanation,explanation),severity=COALESCE(:severity,severity),
-      occurrences=occurrences+1,mastery_score=GREATEST(0,mastery_score-5),next_review_at=NOW()+INTERVAL '1 day' WHERE id=:eid")
-      ->execute(['category'=>$e['category']??null,'topic'=>$e['topic']??null,'original'=>$e['original']??null,'corrected'=>$e['corrected']??null,
-      'explanation'=>$e['explanation']??null,'severity'=>$e['severity']??'medium','eid'=>$existing]);
+    $key = preg_replace('/[^a-z0-9_]+/i', '_', $key);
+
+    return trim((string)$key, '_') ?: 'other';
+}
+
+function normalize_word_v104(string $word): string
+{
+    return preg_replace(
+        '/\s+/',
+        ' ',
+        trim(mb_strtolower($word))
+    ) ?: '';
+}
+
+$pdo = db();
+
+try {
+    $pdo->beginTransaction();
+
+    $query = $pdo->prepare("
+        SELECT id
+        FROM students
+        WHERE regexp_replace(
+            COALESCE(phone, ''),
+            '[^0-9]',
+            '',
+            'g'
+        ) = :phone
+        LIMIT 1
+    ");
+    $query->execute(['phone' => $phone]);
+    $studentId = $query->fetchColumn();
+
+    if (!$studentId) {
+        $query = $pdo->prepare("
+            INSERT INTO students(name, phone)
+            VALUES(:name, :phone)
+            RETURNING id
+        ");
+        $query->execute([
+            'name' => $name !== '' ? $name : 'Aluno',
+            'phone' => $phone,
+        ]);
+        $studentId = $query->fetchColumn();
+
+        $pdo->prepare("
+            INSERT INTO student_profiles(
+                student_id,
+                overall_level,
+                estimated_level,
+                goal,
+                correction_mode,
+                diagnostic_status,
+                diagnostic_step,
+                preferred_language_support,
+                pre_a1
+            )
+            VALUES(
+                :student_id,
+                'PRE-A1',
+                'PRE-A1',
+                'Aprender inglês',
+                'balanced',
+                'pending',
+                0,
+                'portuguese',
+                TRUE
+            )
+        ")->execute(['student_id' => $studentId]);
+    }
+
+    $session = null;
+
+    if ($mode === 'conversation') {
+        $query = $pdo->prepare("
+            SELECT
+                id,
+                COALESCE(turn_count, 0) AS turn_count,
+                COALESCE(max_turns, 10) AS max_turns,
+                COALESCE(conversation_topic, topic, 'daily_life') AS conversation_topic,
+                COALESCE(conversation_style, 'guided') AS conversation_style
+            FROM sessions
+            WHERE student_id = :student_id
+              AND status = 'active'
+              AND mode = 'conversation'
+              AND created_at >= NOW() - INTERVAL '12 hours'
+            ORDER BY created_at DESC
+            LIMIT 1
+        ");
+        $query->execute(['student_id' => $studentId]);
+        $session = $query->fetch(PDO::FETCH_ASSOC) ?: null;
     } else {
-      $pdo->prepare("INSERT INTO student_errors(student_id,session_id,message_id,category,topic,canonical_key,original_text,corrected_text,explanation,severity,occurrences,mastery_score,status,next_review_at)
-      VALUES(:id,:sid,:mid,:category,:topic,:k,:original,:corrected,:explanation,:severity,1,0,'learning',NOW()+INTERVAL '1 day')")
-      ->execute(['id'=>$studentId,'sid'=>$sessionId,'mid'=>$messageId,'category'=>$e['category']??null,'topic'=>$e['topic']??null,'k'=>$key,
-      'original'=>$e['original']??null,'corrected'=>$e['corrected']??null,'explanation'=>$e['explanation']??null,'severity'=>$e['severity']??'medium']);
+        $query = $pdo->prepare("
+            SELECT id
+            FROM sessions
+            WHERE student_id = :student_id
+              AND status = 'active'
+              AND mode = :mode
+              AND created_at >= NOW() - INTERVAL '4 hours'
+            ORDER BY created_at DESC
+            LIMIT 1
+        ");
+        $query->execute([
+            'student_id' => $studentId,
+            'mode' => $mode,
+        ]);
+        $sessionId = $query->fetchColumn();
+
+        if ($sessionId) {
+            $session = [
+                'id' => $sessionId,
+                'turn_count' => 0,
+                'max_turns' => $maxTurns,
+                'conversation_topic' => $topic,
+                'conversation_style' => $conversationStyle,
+            ];
+        }
     }
-  }
 
-  foreach(($evaluation['vocabulary']??[]) as $v){
-    if(!is_array($v)) continue; $word=trim((string)($v['word']??'')); if($word==='') continue; $norm=normalize_word_v4($word);
-    $q=$pdo->prepare("SELECT id FROM vocabulary WHERE normalized_word=:n LIMIT 1"); $q->execute(['n'=>$norm]); $vid=$q->fetchColumn();
-    if(!$vid){
-      $q=$pdo->prepare("INSERT INTO vocabulary(word,normalized_word,translation,definition_en,example,level,category)
-      VALUES(:word,:n,:translation,:definition,:example,:level,:category) RETURNING id");
-      $q->execute(['word'=>$word,'n'=>$norm,'translation'=>$v['translation']??null,'definition'=>$v['definition_en']??null,'example'=>$v['example']??null,'level'=>$v['level']??null,'category'=>$v['category']??null]);
-      $vid=$q->fetchColumn();
+    if (!$session) {
+        $query = $pdo->prepare("
+            INSERT INTO sessions(
+                student_id,
+                channel,
+                mode,
+                topic,
+                status,
+                turn_count,
+                max_turns,
+                conversation_topic,
+                conversation_style
+            )
+            VALUES(
+                :student_id,
+                :channel,
+                :mode,
+                :topic,
+                'active',
+                0,
+                :max_turns,
+                :conversation_topic,
+                :conversation_style
+            )
+            RETURNING id
+        ");
+        $query->execute([
+            'student_id' => $studentId,
+            'channel' => str_starts_with((string)($data['channel'] ?? ''), 'web')
+                ? (string)$data['channel']
+                : 'whatsapp',
+            'mode' => $mode,
+            'topic' => $topic !== '' ? $topic : null,
+            'max_turns' => $maxTurns,
+            'conversation_topic' => $mode === 'conversation' ? $topic : null,
+            'conversation_style' => $conversationStyle,
+        ]);
+
+        $session = [
+            'id' => $query->fetchColumn(),
+            'turn_count' => 0,
+            'max_turns' => $maxTurns,
+            'conversation_topic' => $topic,
+            'conversation_style' => $conversationStyle,
+        ];
     }
-    $pdo->prepare("INSERT INTO student_vocabulary(student_id,vocabulary_id,status,mastery_score,repetitions,correct_answers,incorrect_answers,first_seen_at,next_review_at,interval_days,ease_factor)
-    VALUES(:id,:vid,'learning',0,0,0,0,NOW(),NOW()+INTERVAL '1 day',1,2.50)
-    ON CONFLICT(student_id,vocabulary_id) DO UPDATE SET next_review_at=COALESCE(student_vocabulary.next_review_at,NOW()+INTERVAL '1 day')")
-    ->execute(['id'=>$studentId,'vid'=>$vid]);
-  }
 
-  foreach(($evaluation['review_results']??[]) as $r){
-    if(!is_array($r)||empty($r['word'])) continue; $norm=normalize_word_v4((string)$r['word']); $correct=!empty($r['correct']);
-    $q=$pdo->prepare("SELECT sv.id,sv.mastery_score,sv.repetitions,sv.interval_days,sv.ease_factor FROM student_vocabulary sv JOIN vocabulary v ON v.id=sv.vocabulary_id
-    WHERE sv.student_id=:id AND v.normalized_word=:n LIMIT 1"); $q->execute(['id'=>$studentId,'n'=>$norm]); $sv=$q->fetch(); if(!$sv) continue;
-    $mastery=(float)$sv['mastery_score']; $reps=(int)$sv['repetitions']+1; $interval=max(1,(int)$sv['interval_days']); $ease=(float)$sv['ease_factor'];
-    if($correct){$mastery=min(100,$mastery+15);$interval=$reps<=1?2:min(30,max(3,(int)round($interval*$ease)));$ease=min(3.0,$ease+.05);}
-    else{$mastery=max(0,$mastery-15);$interval=1;$ease=max(1.3,$ease-.20);}
-    $status=$mastery>=85?'mastered':'learning';
-    $pdo->prepare("UPDATE student_vocabulary SET status=:status,mastery_score=:mastery,repetitions=:reps,correct_answers=correct_answers+:ci,incorrect_answers=incorrect_answers+:ii,
-    last_review_at=NOW(),next_review_at=NOW()+(:days||' days')::interval,interval_days=:days,ease_factor=:ease WHERE id=:id")
-    ->execute(['status'=>$status,'mastery'=>$mastery,'reps'=>$reps,'ci'=>$correct?1:0,'ii'=>$correct?0:1,'days'=>$interval,'ease'=>$ease,'id'=>$sv['id']]);
-  }
+    $sessionId = (string)$session['id'];
+    $currentTurnCount = (int)($session['turn_count'] ?? 0);
+    $sessionMaxTurns = conversation_max_turns(
+        $session['max_turns'] ?? $maxTurns
+    );
 
-  foreach(($evaluation['error_review_results']??[]) as $r){
-    if(!is_array($r)||empty($r['topic'])) continue; $k=strtolower(preg_replace('/[^a-z0-9_]+/i','_',trim((string)$r['topic']))); $correct=!empty($r['correct']);
-    $q=$pdo->prepare("SELECT id,mastery_score FROM student_errors WHERE student_id=:id AND canonical_key=:k AND status='learning' LIMIT 1"); $q->execute(['id'=>$studentId,'k'=>$k]); $er=$q->fetch(); if(!$er) continue;
-    $mastery=$correct?min(100,(float)$er['mastery_score']+20):max(0,(float)$er['mastery_score']-10); $status=$mastery>=85?'mastered':'learning'; $days=$correct?($mastery>=60?7:3):1;
-    $pdo->prepare("UPDATE student_errors SET mastery_score=:m,status=:status,last_review_at=NOW(),next_review_at=NOW()+(:days||' days')::interval WHERE id=:id")
-      ->execute(['m'=>$mastery,'status'=>$status,'days'=>$days,'id'=>$er['id']]);
-  }
+    $query = $pdo->prepare("
+        INSERT INTO messages(
+            session_id,
+            student_id,
+            role,
+            message_type,
+            content,
+            transcription
+        )
+        VALUES(
+            :session_id,
+            :student_id,
+            'student',
+            :message_type,
+            :content,
+            :transcription
+        )
+        RETURNING id
+    ");
+    $query->execute([
+        'session_id' => $sessionId,
+        'student_id' => $studentId,
+        'message_type' => $messageType,
+        'content' => $studentMessage,
+        'transcription' => $messageType === 'audio'
+            ? $studentMessage
+            : null,
+    ]);
+    $messageId = $query->fetchColumn();
 
-  foreach(($evaluation['skills']??[]) as $s){
-    if(!is_array($s)||empty($s['code'])) continue; $q=$pdo->prepare("SELECT id FROM skills WHERE code=:c LIMIT 1"); $q->execute(['c'=>$s['code']]); $sid=$q->fetchColumn(); if(!$sid) continue;
-    $score=clamp_score_v4($s['score']??0); $success=!empty($s['success'])?1:0;
-    $pdo->prepare("INSERT INTO student_skills(student_id,skill_id,score,attempts,successes,last_practiced_at,updated_at)
-    VALUES(:id,:sid,:score,1,:success,NOW(),NOW()) ON CONFLICT(student_id,skill_id) DO UPDATE SET score=ROUND(((student_skills.score*3)+EXCLUDED.score)/4,2),attempts=student_skills.attempts+1,
-    successes=student_skills.successes+EXCLUDED.successes,last_practiced_at=NOW(),updated_at=NOW()")
-    ->execute(['id'=>$studentId,'sid'=>$sid,'score'=>$score,'success'=>$success]);
-  }
+    if ($teacherMessage !== '') {
+        $pdo->prepare("
+            INSERT INTO messages(
+                session_id,
+                student_id,
+                role,
+                message_type,
+                content
+            )
+            VALUES(
+                :session_id,
+                :student_id,
+                'teacher',
+                'text',
+                :content
+            )
+        ")->execute([
+            'session_id' => $sessionId,
+            'student_id' => $studentId,
+            'content' => $teacherMessage,
+        ]);
+    }
 
-  $g=array_key_exists('grammar_score',$evaluation)?clamp_score_v4($evaluation['grammar_score']):null;
-  $v=array_key_exists('vocabulary_score',$evaluation)?clamp_score_v4($evaluation['vocabulary_score']):null;
-  $f=array_key_exists('fluency_score',$evaluation)?clamp_score_v4($evaluation['fluency_score']):null;
-  $c=array_key_exists('comprehension_score',$evaluation)?clamp_score_v4($evaluation['comprehension_score']):null;
-  $pdo->prepare("UPDATE sessions SET grammar_score=COALESCE(:g,grammar_score),vocabulary_score=COALESCE(:v,vocabulary_score),fluency_score=COALESCE(:f,fluency_score),comprehension_score=COALESCE(:c,comprehension_score) WHERE id=:id")
-    ->execute(['g'=>$g,'v'=>$v,'f'=>$f,'c'=>$c,'id'=>$sessionId]);
-  $pdo->prepare("UPDATE student_profiles SET grammar_score=COALESCE(:g,grammar_score),vocabulary_score=COALESCE(:v,vocabulary_score),fluency_score=COALESCE(:f,fluency_score),last_study_at=NOW(),xp=xp+:xp,updated_at=NOW() WHERE student_id=:id")
-    ->execute(['g'=>$g,'v'=>$v,'f'=>$f,'xp'=>$mode==='review'?8:5,'id'=>$studentId]);
+    $newTurnCount = $currentTurnCount;
 
-  $pdo->commit(); json_response(['success'=>true,'student_id'=>$studentId,'session_id'=>$sessionId,'mode'=>$mode],201);
-}catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();json_response(['success'=>false,'error'=>$e->getMessage()],500);}
+    if ($mode === 'conversation') {
+        $newTurnCount++;
+
+        $pdo->prepare("
+            UPDATE sessions
+            SET
+                turn_count = :turn_count,
+                max_turns = :max_turns,
+                conversation_topic = COALESCE(
+                    NULLIF(:conversation_topic, ''),
+                    conversation_topic,
+                    topic,
+                    'daily_life'
+                ),
+                conversation_style = :conversation_style,
+                last_student_message_at = NOW(),
+                last_teacher_message_at = CASE
+                    WHEN CAST(:has_teacher_message AS INTEGER) = 1 THEN NOW()
+                    ELSE last_teacher_message_at
+                END
+            WHERE id = :session_id
+        ")->execute([
+            'turn_count' => $newTurnCount,
+            'max_turns' => $sessionMaxTurns,
+            'conversation_topic' => $topic,
+            'conversation_style' => $conversationStyle,
+            'has_teacher_message' => $teacherMessage !== '' ? 1 : 0,
+            'session_id' => $sessionId,
+        ]);
+    }
+
+    foreach (($evaluation['errors'] ?? []) as $error) {
+        if (!is_array($error)) {
+            continue;
+        }
+
+        $key = canonical_key_v104($error);
+
+        $query = $pdo->prepare("
+            SELECT id
+            FROM student_errors
+            WHERE student_id = :student_id
+              AND canonical_key = :canonical_key
+              AND status = 'learning'
+            LIMIT 1
+        ");
+        $query->execute([
+            'student_id' => $studentId,
+            'canonical_key' => $key,
+        ]);
+        $existing = $query->fetchColumn();
+
+        if ($existing) {
+            $pdo->prepare("
+                UPDATE student_errors
+                SET
+                    category = COALESCE(:category, category),
+                    topic = COALESCE(:topic, topic),
+                    original_text = COALESCE(:original, original_text),
+                    corrected_text = COALESCE(:corrected, corrected_text),
+                    explanation = COALESCE(:explanation, explanation),
+                    severity = COALESCE(:severity, severity),
+                    occurrences = occurrences + 1,
+                    mastery_score = GREATEST(0, mastery_score - 5),
+                    next_review_at = NOW() + INTERVAL '1 day'
+                WHERE id = :error_id
+            ")->execute([
+                'category' => $error['category'] ?? null,
+                'topic' => $error['topic'] ?? null,
+                'original' => $error['original'] ?? null,
+                'corrected' => $error['corrected'] ?? null,
+                'explanation' => $error['explanation'] ?? null,
+                'severity' => $error['severity'] ?? 'medium',
+                'error_id' => $existing,
+            ]);
+        } else {
+            $pdo->prepare("
+                INSERT INTO student_errors(
+                    student_id,
+                    session_id,
+                    message_id,
+                    category,
+                    topic,
+                    canonical_key,
+                    original_text,
+                    corrected_text,
+                    explanation,
+                    severity,
+                    occurrences,
+                    mastery_score,
+                    status,
+                    next_review_at
+                )
+                VALUES(
+                    :student_id,
+                    :session_id,
+                    :message_id,
+                    :category,
+                    :topic,
+                    :canonical_key,
+                    :original,
+                    :corrected,
+                    :explanation,
+                    :severity,
+                    1,
+                    0,
+                    'learning',
+                    NOW() + INTERVAL '1 day'
+                )
+            ")->execute([
+                'student_id' => $studentId,
+                'session_id' => $sessionId,
+                'message_id' => $messageId,
+                'category' => $error['category'] ?? null,
+                'topic' => $error['topic'] ?? null,
+                'canonical_key' => $key,
+                'original' => $error['original'] ?? null,
+                'corrected' => $error['corrected'] ?? null,
+                'explanation' => $error['explanation'] ?? null,
+                'severity' => $error['severity'] ?? 'medium',
+            ]);
+        }
+    }
+
+    foreach (($evaluation['vocabulary'] ?? []) as $vocabulary) {
+        if (!is_array($vocabulary)) {
+            continue;
+        }
+
+        $word = trim((string)($vocabulary['word'] ?? ''));
+
+        if ($word === '') {
+            continue;
+        }
+
+        $normalized = normalize_word_v104($word);
+
+        $query = $pdo->prepare("
+            SELECT id
+            FROM vocabulary
+            WHERE normalized_word = :normalized
+            LIMIT 1
+        ");
+        $query->execute(['normalized' => $normalized]);
+        $vocabularyId = $query->fetchColumn();
+
+        if (!$vocabularyId) {
+            $query = $pdo->prepare("
+                INSERT INTO vocabulary(
+                    word,
+                    normalized_word,
+                    translation,
+                    definition_en,
+                    example,
+                    level,
+                    category
+                )
+                VALUES(
+                    :word,
+                    :normalized,
+                    :translation,
+                    :definition,
+                    :example,
+                    :level,
+                    :category
+                )
+                RETURNING id
+            ");
+            $query->execute([
+                'word' => $word,
+                'normalized' => $normalized,
+                'translation' => $vocabulary['translation'] ?? null,
+                'definition' => $vocabulary['definition_en'] ?? null,
+                'example' => $vocabulary['example'] ?? null,
+                'level' => $vocabulary['level'] ?? null,
+                'category' => $vocabulary['category'] ?? null,
+            ]);
+            $vocabularyId = $query->fetchColumn();
+        }
+
+        $pdo->prepare("
+            INSERT INTO student_vocabulary(
+                student_id,
+                vocabulary_id,
+                status,
+                mastery_score,
+                repetitions,
+                correct_answers,
+                incorrect_answers,
+                first_seen_at,
+                next_review_at,
+                interval_days,
+                ease_factor
+            )
+            VALUES(
+                :student_id,
+                :vocabulary_id,
+                'learning',
+                0,
+                0,
+                0,
+                0,
+                NOW(),
+                NOW() + INTERVAL '1 day',
+                1,
+                2.50
+            )
+            ON CONFLICT(student_id, vocabulary_id)
+            DO UPDATE SET
+                next_review_at = COALESCE(
+                    student_vocabulary.next_review_at,
+                    NOW() + INTERVAL '1 day'
+                )
+        ")->execute([
+            'student_id' => $studentId,
+            'vocabulary_id' => $vocabularyId,
+        ]);
+    }
+
+    foreach (($evaluation['skills'] ?? []) as $skill) {
+        if (!is_array($skill) || empty($skill['code'])) {
+            continue;
+        }
+
+        $query = $pdo->prepare("
+            SELECT id
+            FROM skills
+            WHERE code = :code
+            LIMIT 1
+        ");
+        $query->execute(['code' => $skill['code']]);
+        $skillId = $query->fetchColumn();
+
+        if (!$skillId) {
+            continue;
+        }
+
+        $score = clamp_score_v104($skill['score'] ?? 0);
+        $success = !empty($skill['success']) ? 1 : 0;
+
+        $pdo->prepare("
+            INSERT INTO student_skills(
+                student_id,
+                skill_id,
+                score,
+                attempts,
+                successes,
+                last_practiced_at,
+                updated_at
+            )
+            VALUES(
+                :student_id,
+                :skill_id,
+                :score,
+                1,
+                :success,
+                NOW(),
+                NOW()
+            )
+            ON CONFLICT(student_id, skill_id)
+            DO UPDATE SET
+                score = ROUND(
+                    ((student_skills.score * 3) + EXCLUDED.score) / 4,
+                    2
+                ),
+                attempts = student_skills.attempts + 1,
+                successes = student_skills.successes + EXCLUDED.successes,
+                last_practiced_at = NOW(),
+                updated_at = NOW()
+        ")->execute([
+            'student_id' => $studentId,
+            'skill_id' => $skillId,
+            'score' => $score,
+            'success' => $success,
+        ]);
+    }
+
+    $grammar = array_key_exists('grammar_score', $evaluation)
+        ? clamp_score_v104($evaluation['grammar_score'])
+        : null;
+
+    $vocabulary = array_key_exists('vocabulary_score', $evaluation)
+        ? clamp_score_v104($evaluation['vocabulary_score'])
+        : null;
+
+    $fluency = array_key_exists('fluency_score', $evaluation)
+        ? clamp_score_v104($evaluation['fluency_score'])
+        : null;
+
+    $comprehension = array_key_exists('comprehension_score', $evaluation)
+        ? clamp_score_v104($evaluation['comprehension_score'])
+        : null;
+
+    $pdo->prepare("
+        UPDATE sessions
+        SET
+            grammar_score = COALESCE(:grammar, grammar_score),
+            vocabulary_score = COALESCE(:vocabulary, vocabulary_score),
+            fluency_score = COALESCE(:fluency, fluency_score),
+            comprehension_score = COALESCE(
+                :comprehension,
+                comprehension_score
+            )
+        WHERE id = :session_id
+    ")->execute([
+        'grammar' => $grammar,
+        'vocabulary' => $vocabulary,
+        'fluency' => $fluency,
+        'comprehension' => $comprehension,
+        'session_id' => $sessionId,
+    ]);
+
+    $pdo->prepare("
+        UPDATE student_profiles
+        SET
+            grammar_score = COALESCE(:grammar, grammar_score),
+            vocabulary_score = COALESCE(:vocabulary, vocabulary_score),
+            fluency_score = COALESCE(:fluency, fluency_score),
+            last_study_at = NOW(),
+            xp = xp + :xp,
+            updated_at = NOW()
+        WHERE student_id = :student_id
+    ")->execute([
+        'grammar' => $grammar,
+        'vocabulary' => $vocabulary,
+        'fluency' => $fluency,
+        'xp' => $mode === 'review' ? 8 : 5,
+        'student_id' => $studentId,
+    ]);
+
+    $shouldFinish = $mode === 'conversation'
+        && ($sessionEnd || $newTurnCount >= $sessionMaxTurns);
+
+    if ($shouldFinish) {
+        $completedReason = $sessionEnd
+            ? 'teacher_finished'
+            : 'max_turns_reached';
+
+        $pdo->prepare("
+            UPDATE sessions
+            SET
+                status = 'completed',
+                ended_at = NOW(),
+                completed_reason = :completed_reason,
+                conversation_summary = NULLIF(:summary, ''),
+                summary_data = CAST(:summary_data AS jsonb)
+            WHERE id = :session_id
+        ")->execute([
+            'completed_reason' => $completedReason,
+            'summary' => $sessionSummary,
+            'summary_data' => json_encode(
+                $summaryData,
+                JSON_UNESCAPED_UNICODE
+            ),
+            'session_id' => $sessionId,
+        ]);
+    }
+
+    $pdo->commit();
+
+    json_response([
+        'success' => true,
+        'student_id' => $studentId,
+        'session_id' => $sessionId,
+        'mode' => $mode,
+        'conversation' => $mode === 'conversation'
+            ? [
+                'topic' => $topic,
+                'style' => $conversationStyle,
+                'turn_count' => $newTurnCount,
+                'max_turns' => $sessionMaxTurns,
+                'remaining_turns' => max(
+                    0,
+                    $sessionMaxTurns - $newTurnCount
+                ),
+                'should_wrap_up' => $newTurnCount >= max(
+                    1,
+                    $sessionMaxTurns - 2
+                ),
+                'completed' => $shouldFinish,
+            ]
+            : null,
+    ], 201);
+} catch (Throwable $exception) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+
+    error_log(
+        '[SAVE INTERACTION] '
+        . get_class($exception)
+        . ': '
+        . $exception->getMessage()
+    );
+
+    $response = [
+        'success' => false,
+        'error' => 'Não foi possível salvar a interação.',
+    ];
+
+    if ((string)env('APP_ENV', 'production') !== 'production') {
+        $response['details'] = $exception->getMessage();
+    }
+
+    json_response($response, 500);
+}

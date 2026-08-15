@@ -20,6 +20,19 @@ document.addEventListener('DOMContentLoaded',()=>{
     const textForm=document.getElementById('practice-form');
     const textInput=document.getElementById('message');
     const chat=document.getElementById('chat');
+    const topicSelect=document.getElementById('conversation-topic');
+    const styleSelect=document.getElementById('conversation-style');
+    const correctionModeSelect=document.getElementById('correction-mode');
+    const maxTurnsSelect=document.getElementById('conversation-max-turns');
+
+    function conversationSettings(){
+        return {
+            topic:topicSelect?.value || 'daily_life',
+            style:styleSelect?.value || 'guided',
+            correction_mode:correctionModeSelect?.value || 'balanced',
+            max_turns:Number(maxTurnsSelect?.value || 10)
+        };
+    }
 
     function addMessage(text,who){
         const box=document.createElement('div');
@@ -54,7 +67,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             const response=await fetch('/api/web/teacher.php',{
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({message})
+                body:JSON.stringify({message,...conversationSettings()})
             });
 
             const data=await response.json();
@@ -198,6 +211,12 @@ document.addEventListener('DOMContentLoaded',()=>{
 
         formData.append('audio',blob,`voice-${Date.now()}.${extension}`);
         formData.append('duration_seconds',durationSeconds.toFixed(2));
+
+        const settings=conversationSettings();
+        formData.append('topic',settings.topic);
+        formData.append('style',settings.style);
+        formData.append('correction_mode',settings.correction_mode);
+        formData.append('max_turns',String(settings.max_turns));
 
         try{
             const response=await fetch('/api/web/voice.php',{

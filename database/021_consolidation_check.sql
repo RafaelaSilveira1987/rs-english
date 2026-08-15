@@ -20,7 +20,7 @@ ALTER TABLE student_profiles
     ADD COLUMN IF NOT EXISTS diagnostic_step INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS diagnostic_started_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS diagnostic_completed_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS estimated_level VARCHAR(5);
+    ADD COLUMN IF NOT EXISTS estimated_level VARCHAR(10);
 
 -- study plans
 CREATE TABLE IF NOT EXISTS study_plans (
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS study_plans (
     start_date DATE NOT NULL DEFAULT CURRENT_DATE,
     end_date DATE,
     goal TEXT,
-    target_level VARCHAR(5),
+    target_level VARCHAR(10),
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     plan_data JSONB NOT NULL DEFAULT '{}'::jsonb
 );
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     content TEXT NOT NULL,
     embedding JSONB,
     token_estimate INTEGER NOT NULL DEFAULT 0,
-    level VARCHAR(5),
+    level VARCHAR(10),
     category VARCHAR(100),
     tags TEXT[],
     active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS curriculum_modules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code VARCHAR(100) UNIQUE NOT NULL,
     title VARCHAR(200) NOT NULL,
-    level VARCHAR(5) NOT NULL,
+    level VARCHAR(10) NOT NULL,
     module_order INTEGER NOT NULL DEFAULT 0,
     description TEXT,
     objectives JSONB NOT NULL DEFAULT '[]'::jsonb,

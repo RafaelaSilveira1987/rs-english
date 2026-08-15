@@ -26,6 +26,10 @@ if((int)($_FILES['audio']['size'] ?? 0)>$maxBytes){
 try{
     $mime=(string)($_FILES['audio']['type'] ?? 'audio/webm');
     $duration=(float)($_POST['duration_seconds'] ?? 0);
+    $topic=trim((string)($_POST['topic'] ?? 'daily_life'));
+    $style=trim((string)($_POST['style'] ?? 'guided'));
+    $correctionMode=trim((string)($_POST['correction_mode'] ?? 'balanced'));
+    $maxTurns=max(4,min(30,(int)($_POST['max_turns'] ?? 10)));
 
     $allowed=[
         'audio/webm','audio/ogg','audio/mpeg','audio/mp4',
@@ -66,6 +70,13 @@ try{
         'message'=>$transcription['text'],
         'message_type'=>'audio',
         'channel'=>'web_voice',
+        'mode'=>'conversation',
+        'topic'=>$topic,
+        'conversation'=>[
+            'style'=>$style,
+            'max_turns'=>$maxTurns
+        ],
+        'correction_mode'=>$correctionMode,
         'audio_duration_seconds'=>$duration
     ]);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../../src/db.php';
 require_once __DIR__ . '/../../../src/api.php';
+require_once __DIR__ . '/../../../src/conversation.php';
 
 require_n8n_key();
 
@@ -278,6 +279,80 @@ $query = $pdo->prepare("
 $query->execute(['student_id' => $student['id']]);
 $vocabularyStats = $query->fetch(PDO::FETCH_ASSOC);
 
+$query = $pdo->prepare("
+    SELECT
+        id,
+        channel,
+        mode,
+        topic,
+        COALESCE(conversation_topic, topic, 'daily_life') AS conversation_topic,
+        COALESCE(conversation_style, 'guided') AS conversation_style,
+        COALESCE(turn_count, 0) AS turn_count,
+        COALESCE(max_turns, 10) AS max_turns,
+        created_at,
+        last_student_message_at,
+        last_teacher_message_at
+    FROM sessions
+    WHERE student_id = :student_id
+      AND status = 'active'
+      AND mode = 'conversation'
+      AND created_at >= NOW() - INTERVAL '12 hours'
+    ORDER BY created_at DESC
+    LIMIT 1
+");
+$query->execute(['student_id' => $student['id']]);
+$conversationSession = $query->fetch(PDO::FETCH_ASSOC) ?: null;
+
+$query = $pdo->prepare("
+    SELECT
+        focus_mode,
+        correction_mode,
+        preferred_topics,
+        conversation_topic,
+        conversation_style,
+        conversation_max_turns
+    FROM student_preferences
+    WHERE student_id = :student_id
+    LIMIT 1
+");
+$query->execute(['student_id' => $student['id']]);
+$studentPreferences = $query->fetch(PDO::FETCH_ASSOC) ?: [
+    'focus_mode' => 'conversation',
+    'correction_mode' => $student['correction_mode'] ?? 'balanced',
+    'preferred_topics' => [],
+    'conversation_topic' => 'daily_life',
+    'conversation_style' => 'guided',
+    'conversation_max_turns' => 10,
+];
+
+if (is_string($studentPreferences['preferred_topics'] ?? null)) {
+    $decodedTopics = json_decode($studentPreferences['preferred_topics'], true);
+    $studentPreferences['preferred_topics'] = is_array($decodedTopics)
+        ? $decodedTopics
+        : [];
+}
+
+$conversation = null;
+
+if ($conversationSession) {
+    $turnCount = (int)$conversationSession['turn_count'];
+    $maxTurns = (int)$conversationSession['max_turns'];
+
+    $conversation = [
+        'session_id' => $conversationSession['id'],
+        'channel' => $conversationSession['channel'],
+        'mode' => 'conversation',
+        'topic' => $conversationSession['conversation_topic'],
+        'style' => $conversationSession['conversation_style'],
+        'turn_count' => $turnCount,
+        'max_turns' => $maxTurns,
+        'remaining_turns' => max(0, $maxTurns - $turnCount),
+        'should_wrap_up' => $turnCount >= max(1, $maxTurns - 2),
+        'should_finish' => $turnCount >= $maxTurns,
+        'created_at' => $conversationSession['created_at'],
+    ];
+}
+
 json_response([
     'ok' => true,
     'found' => true,
@@ -295,4 +370,6 @@ json_response([
     'vocabulary_stats' => $vocabularyStats,
     'recent_messages' => $recentMessages,
     'active_plan' => $activePlan,
+    'student_preferences' => $studentPreferences,
+    'conversation' => $conversation,
 ]);

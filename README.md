@@ -136,3 +136,29 @@ Os ajustes do workflow permanecem documentados em:
 ```text
 docs/N8N-MANUAL-ADJUSTMENTS-V10.3.md
 ```
+
+---
+
+## Atualização v10.4 — modo de conversação
+
+Execute por último:
+
+```text
+database/027_conversation_mode.sql
+```
+
+A v10.4 acrescenta:
+
+- sessões de conversação com 6, 10 ou 14 interações;
+- tema e formato da conversa;
+- controle de repetição e continuidade;
+- encerramento com resumo;
+- conversa digitada e por áudio usando os mesmos parâmetros;
+- endpoints `start-conversation.php` e `end-conversation.php`;
+- estado da conversa no retorno do `context.php`.
+
+Os nós do n8n permanecem para ajuste manual em:
+
+```text
+docs/N8N-MANUAL-CONVERSATION-V10.4.md
+```

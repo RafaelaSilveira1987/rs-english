@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS diagnostic_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    estimated_level VARCHAR(5) NOT NULL,
+    estimated_level VARCHAR(10) NOT NULL,
     confidence_score NUMERIC(5,2),
     strengths JSONB NOT NULL DEFAULT '[]'::jsonb,
     weaknesses JSONB NOT NULL DEFAULT '[]'::jsonb,

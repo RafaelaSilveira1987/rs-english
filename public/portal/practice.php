@@ -11,6 +11,54 @@ require __DIR__.'/../../templates/header.php';
 ?>
 
 <section class="panel voice-practice">
+    <div class="conversation-settings">
+        <div>
+            <label for="conversation-topic">Tema da conversa</label>
+            <select id="conversation-topic">
+                <option value="daily_life">Rotina e dia a dia</option>
+                <option value="work">Trabalho e carreira</option>
+                <option value="technology">Tecnologia</option>
+                <option value="travel">Viagem</option>
+                <option value="food">Comida e restaurante</option>
+                <option value="movies">Filmes e séries</option>
+                <option value="goals">Planos e objetivos</option>
+                <option value="job_interview">Entrevista de emprego</option>
+                <option value="free_conversation">Conversação livre</option>
+            </select>
+        </div>
+
+        <div>
+            <label for="conversation-style">Formato</label>
+            <select id="conversation-style">
+                <option value="guided">Guiada</option>
+                <option value="free">Livre</option>
+                <option value="roleplay">Simulação</option>
+            </select>
+        </div>
+
+        <div>
+            <label for="correction-mode">Correções</label>
+            <select id="correction-mode">
+                <option value="light">Leves</option>
+                <option value="balanced" selected>Equilibradas</option>
+                <option value="intensive">Intensivas</option>
+            </select>
+        </div>
+
+        <div>
+            <label for="conversation-max-turns">Duração</label>
+            <select id="conversation-max-turns">
+                <option value="6">6 interações</option>
+                <option value="10" selected>10 interações</option>
+                <option value="14">14 interações</option>
+            </select>
+        </div>
+    </div>
+
+    <p class="conversation-hint">
+        A Emma corrige em português quando necessário e mantém a continuidade da conversa em inglês.
+    </p>
+
     <div class="practice-tabs">
         <button class="btn btn-primary" type="button" data-tab-button="text">
             ⌨️ Digitar
