@@ -37,11 +37,11 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#07112b">
+<meta name="theme-color" content="#f7f9ff">
 <meta name="color-scheme" content="light">
 <title><?= e($pageTitle) ?> — RS English</title>
-<link rel="icon" href="/assets/images/rs-english-mark.webp" type="image/webp">
-<link rel="stylesheet" href="/assets/css/app.css?v=10.6">
+<link rel="icon" href="/assets/images/rs-english-mark-transparent.png" type="image/png">
+<link rel="stylesheet" href="/assets/css/app.css?v=10.7">
 </head>
 <body class="role-<?= e((string)$role) ?>">
 <div class="sidebar-overlay" data-sidebar-overlay></div>
@@ -49,7 +49,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 
 <aside class="sidebar" aria-label="Navegação principal">
     <a class="brand" href="<?= e($homeHref) ?>" aria-label="RS English — início">
-        <img src="/assets/images/rs-english-horizontal-dark.webp" alt="RS English">
+        <img src="/assets/images/rs-english-horizontal-transparent.png" alt="RS English">
     </a>
 
     <div class="sidebar-scroll">

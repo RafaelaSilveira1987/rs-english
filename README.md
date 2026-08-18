@@ -1,8 +1,8 @@
-# RS English v10.5
+# RS English v10.7
 
-Versão consolidada com diagnóstico adaptativo, conversação, voz e endurecimento do salvamento do diagnóstico.
+Versão consolidada com diagnóstico adaptativo, conversação, voz, portais do professor e do aluno e nova experiência visual clara baseada na identidade RS English.
 
-Para esta atualização, execute `database/028_diagnostic_save_hardening.sql`. Os ajustes dos nós do n8n permanecem manuais.
+A atualização v10.7 implementa no código a tela de login completa, logos transparentes e uma paleta mais clara em todo o portal. Não há migration adicional específica para o layout. Para instalações que ainda não aplicaram as atualizações anteriores, mantenha a ordem das migrations existentes. Os ajustes dos nós do n8n permanecem manuais.
 
 ## Resultado
 

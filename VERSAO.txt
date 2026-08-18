@@ -1,0 +1,8 @@
+RS English v10.7
+
+- Login completo implementado na página PHP/CSS
+- Logo horizontal e símbolo com fundo transparente
+- Paleta clara aplicada aos portais do professor e do aluno
+- Menu lateral claro e banners internos claros
+- Responsividade para desktop, tablet e celular
+- Sem alteração automática nos fluxos n8n
