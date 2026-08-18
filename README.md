@@ -1,4 +1,8 @@
-# RS English v10 — Conversação por voz
+# RS English v10.5
+
+Versão consolidada com diagnóstico adaptativo, conversação, voz e endurecimento do salvamento do diagnóstico.
+
+Para esta atualização, execute `database/028_diagnostic_save_hardening.sql`. Os ajustes dos nós do n8n permanecem manuais.
 
 ## Resultado
 

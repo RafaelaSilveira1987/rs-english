@@ -7,6 +7,40 @@ require_once __DIR__ . '/../../../src/api.php';
 
 require_n8n_key();
 
+/**
+ * Executa uma etapa auxiliar sem cancelar o salvamento principal.
+ * O PostgreSQL exige rollback até um SAVEPOINT após qualquer erro SQL.
+ */
+function diagnostic_optional_step(
+    PDO $pdo,
+    string $savepoint,
+    string $label,
+    callable $callback,
+    array &$warnings
+): void {
+    $safeSavepoint = preg_replace('/[^a-z0-9_]/i', '_', $savepoint) ?: 'optional_step';
+
+    $pdo->exec('SAVEPOINT ' . $safeSavepoint);
+
+    try {
+        $callback();
+        $pdo->exec('RELEASE SAVEPOINT ' . $safeSavepoint);
+    } catch (Throwable $exception) {
+        $pdo->exec('ROLLBACK TO SAVEPOINT ' . $safeSavepoint);
+        $pdo->exec('RELEASE SAVEPOINT ' . $safeSavepoint);
+
+        $warnings[] = $label;
+        error_log(
+            '[RS ENGLISH DIAGNOSTIC OPTIONAL] '
+            . $label
+            . ' | '
+            . get_class($exception)
+            . ' | '
+            . $exception->getMessage()
+        );
+    }
+}
+
 $data = json_input();
 
 $phone = normalize_phone($data['phone'] ?? '');
@@ -47,10 +81,22 @@ $studyPlan = is_array($diagnostic['study_plan'] ?? null) ? $diagnostic['study_pl
 $firstActivity = is_array($diagnostic['first_activity'] ?? null) ? $diagnostic['first_activity'] : [];
 $corrections = is_array($diagnostic['corrections'] ?? null) ? $diagnostic['corrections'] : [];
 
+/*
+ * Não passe booleanos PHP diretamente no execute() do PDO PgSQL.
+ * Em algumas configurações, false é convertido em string vazia e o PostgreSQL
+ * responde "invalid input syntax for type boolean".
+ */
+$preA1DatabaseValue = $level === 'PRE-A1' ? 'true' : 'false';
+
 $pdo = db();
+$stage = 'initializing';
+$errorReference = 'diag-' . bin2hex(random_bytes(5));
+$warnings = [];
 
 try {
     $pdo->beginTransaction();
+
+    $stage = 'finding_student';
 
     $query = $pdo->prepare("
         SELECT id
@@ -62,6 +108,8 @@ try {
     $studentId = $query->fetchColumn();
 
     if (!$studentId) {
+        $stage = 'creating_student';
+
         $query = $pdo->prepare("
             INSERT INTO students (name, phone)
             VALUES (:name, :phone)
@@ -90,37 +138,52 @@ try {
         throw new RuntimeException('Não foi possível localizar ou criar o aluno.');
     }
 
+    $stage = 'ensuring_student_profile';
+
     $query = $pdo->prepare("
-        INSERT INTO student_profiles (
-            student_id,
-            overall_level,
-            estimated_level,
-            goal,
-            correction_mode,
-            diagnostic_status,
-            diagnostic_step,
-            diagnostic_started_at,
-            preferred_language_support,
-            pre_a1
-        )
-        VALUES (
-            :student_id,
-            'PRE-A1',
-            'PRE-A1',
-            'Aprender inglês',
-            'balanced',
-            'in_progress',
-            0,
-            NOW(),
-            :language_support,
-            TRUE
-        )
-        ON CONFLICT (student_id) DO NOTHING
+        SELECT 1
+        FROM student_profiles
+        WHERE student_id = :student_id
+        LIMIT 1
     ");
-    $query->execute([
-        'student_id' => $studentId,
-        'language_support' => $languageSupport,
-    ]);
+    $query->execute(['student_id' => $studentId]);
+    $profileExists = (bool)$query->fetchColumn();
+
+    if (!$profileExists) {
+        $query = $pdo->prepare("
+            INSERT INTO student_profiles (
+                student_id,
+                overall_level,
+                estimated_level,
+                goal,
+                correction_mode,
+                diagnostic_status,
+                diagnostic_step,
+                diagnostic_started_at,
+                preferred_language_support,
+                pre_a1
+            )
+            VALUES (
+                :student_id,
+                'PRE-A1',
+                'PRE-A1',
+                'Aprender inglês',
+                'balanced',
+                'in_progress',
+                0,
+                NOW(),
+                :language_support,
+                CAST(:pre_a1 AS boolean)
+            )
+        ");
+        $query->execute([
+            'student_id' => $studentId,
+            'language_support' => $languageSupport,
+            'pre_a1' => 'true',
+        ]);
+    }
+
+    $stage = 'finding_diagnostic_session';
 
     $query = $pdo->prepare("
         SELECT id
@@ -136,6 +199,8 @@ try {
     $sessionId = $query->fetchColumn();
 
     if (!$sessionId) {
+        $stage = 'creating_diagnostic_session';
+
         $query = $pdo->prepare("
             INSERT INTO sessions (
                 student_id,
@@ -168,6 +233,8 @@ try {
     }
 
     if ($studentMessage !== '') {
+        $stage = 'saving_student_message';
+
         $query = $pdo->prepare("
             INSERT INTO messages (
                 session_id,
@@ -196,6 +263,8 @@ try {
     }
 
     if ($teacherMessage !== '') {
+        $stage = 'saving_teacher_message';
+
         $query = $pdo->prepare("
             INSERT INTO messages (
                 session_id,
@@ -219,63 +288,82 @@ try {
         ]);
     }
 
-    /* Correções detectadas durante o diagnóstico. */
     if ($corrections !== []) {
-        $insertCorrection = $pdo->prepare("
-            INSERT INTO correction_events (
-                student_id,
-                session_id,
-                channel,
-                correction_type,
-                original_text,
-                corrected_text,
-                explanation,
-                target_word,
-                detected_word,
-                confidence_score,
-                accepted
-            )
-            VALUES (
-                :student_id,
-                :session_id,
-                :channel,
-                :correction_type,
-                :original_text,
-                :corrected_text,
-                :explanation,
-                :target_word,
-                :detected_word,
-                :confidence_score,
-                :accepted
-            )
-        ");
+        diagnostic_optional_step(
+            $pdo,
+            'sp_diagnostic_corrections',
+            'correções do diagnóstico não foram registradas',
+            static function () use (
+                $pdo,
+                $corrections,
+                $studentId,
+                $sessionId,
+                $messageType
+            ): void {
+                $insertCorrection = $pdo->prepare("
+                    INSERT INTO correction_events (
+                        student_id,
+                        session_id,
+                        channel,
+                        correction_type,
+                        original_text,
+                        corrected_text,
+                        explanation,
+                        target_word,
+                        detected_word,
+                        confidence_score,
+                        accepted
+                    )
+                    VALUES (
+                        :student_id,
+                        :session_id,
+                        :channel,
+                        :correction_type,
+                        :original_text,
+                        :corrected_text,
+                        :explanation,
+                        :target_word,
+                        :detected_word,
+                        :confidence_score,
+                        CAST(:accepted AS boolean)
+                    )
+                ");
 
-        foreach (array_slice($corrections, 0, 5) as $correction) {
-            if (!is_array($correction)) {
-                continue;
-            }
+                foreach (array_slice($corrections, 0, 5) as $correction) {
+                    if (!is_array($correction)) {
+                        continue;
+                    }
 
-            $insertCorrection->execute([
-                'student_id' => $studentId,
-                'session_id' => $sessionId,
-                'channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
-                'correction_type' => (string)($correction['correction_type'] ?? ($messageType === 'audio' ? 'spoken_transcript' : 'written')),
-                'original_text' => $correction['original_text'] ?? null,
-                'corrected_text' => $correction['corrected_text'] ?? null,
-                'explanation' => $correction['explanation'] ?? null,
-                'target_word' => $correction['target_word'] ?? null,
-                'detected_word' => $correction['detected_word'] ?? null,
-                'confidence_score' => isset($correction['confidence_score'])
-                    ? max(0, min(100, (float)$correction['confidence_score']))
-                    : null,
-                'accepted' => array_key_exists('accepted', $correction)
-                    ? (bool)$correction['accepted']
-                    : true,
-            ]);
-        }
+                    $insertCorrection->execute([
+                        'student_id' => $studentId,
+                        'session_id' => $sessionId,
+                        'channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+                        'correction_type' => (string)(
+                            $correction['correction_type']
+                            ?? ($messageType === 'audio' ? 'spoken_transcript' : 'written')
+                        ),
+                        'original_text' => $correction['original_text'] ?? null,
+                        'corrected_text' => $correction['corrected_text'] ?? null,
+                        'explanation' => $correction['explanation'] ?? null,
+                        'target_word' => $correction['target_word'] ?? null,
+                        'detected_word' => $correction['detected_word'] ?? null,
+                        'confidence_score' => isset($correction['confidence_score'])
+                            ? max(0, min(100, (float)$correction['confidence_score']))
+                            : null,
+                        'accepted' => array_key_exists('accepted', $correction)
+                            && $correction['accepted'] === false
+                                ? 'false'
+                                : 'true',
+                    ]);
+                }
+            },
+            $warnings
+        );
     }
 
     if (!$complete) {
+        $stage = 'updating_diagnostic_progress';
+
         $query = $pdo->prepare("
             UPDATE student_profiles
             SET
@@ -283,7 +371,7 @@ try {
                 diagnostic_step = :step,
                 estimated_level = :level,
                 preferred_language_support = :language_support,
-                pre_a1 = :pre_a1,
+                pre_a1 = CAST(:pre_a1 AS boolean),
                 diagnostic_started_at = COALESCE(diagnostic_started_at, NOW()),
                 last_study_at = NOW(),
                 updated_at = NOW()
@@ -293,7 +381,7 @@ try {
             'step' => $nextStep,
             'level' => $level,
             'language_support' => $languageSupport,
-            'pre_a1' => $level === 'PRE-A1',
+            'pre_a1' => $preA1DatabaseValue,
             'student_id' => $studentId,
         ]);
 
@@ -306,6 +394,7 @@ try {
             'session_id' => $sessionId,
             'next_step' => $nextStep,
             'estimated_level' => $level,
+            'warnings' => $warnings,
         ], 201);
     }
 
@@ -317,6 +406,8 @@ try {
     $writing = (float)($scores['writing'] ?? 0);
     $fluency = (float)($scores['fluency'] ?? 0);
 
+    $stage = 'completing_student_profile';
+
     $query = $pdo->prepare("
         UPDATE student_profiles
         SET
@@ -326,7 +417,7 @@ try {
             diagnostic_step = :step,
             diagnostic_completed_at = NOW(),
             preferred_language_support = :language_support,
-            pre_a1 = :pre_a1,
+            pre_a1 = CAST(:pre_a1 AS boolean),
             grammar_score = :grammar,
             vocabulary_score = :vocabulary,
             speaking_score = :speaking,
@@ -342,7 +433,7 @@ try {
         'level' => $level,
         'step' => $nextStep,
         'language_support' => $languageSupport,
-        'pre_a1' => $level === 'PRE-A1',
+        'pre_a1' => $preA1DatabaseValue,
         'grammar' => $grammar,
         'vocabulary' => $vocabulary,
         'speaking' => $speaking,
@@ -352,25 +443,6 @@ try {
         'fluency' => $fluency,
         'student_id' => $studentId,
     ]);
-
-    $query = $pdo->prepare("
-        SELECT id
-        FROM assessments
-        WHERE assessment_type = 'initial_diagnostic'
-        LIMIT 1
-    ");
-    $query->execute();
-    $assessmentId = $query->fetchColumn();
-
-    if (!$assessmentId) {
-        $query = $pdo->prepare("
-            INSERT INTO assessments (title, assessment_type, level, active)
-            VALUES ('Diagnóstico Inicial', 'initial_diagnostic', :level, TRUE)
-            RETURNING id
-        ");
-        $query->execute(['level' => $level]);
-        $assessmentId = $query->fetchColumn();
-    }
 
     $total = round((
         $grammar
@@ -382,108 +454,167 @@ try {
         + $fluency
     ) / 7, 2);
 
-    $query = $pdo->prepare("
-        INSERT INTO assessment_results (
-            assessment_id,
-            student_id,
-            overall_level,
-            grammar_score,
-            vocabulary_score,
-            speaking_score,
-            listening_score,
-            reading_score,
-            writing_score,
-            fluency_score,
-            total_score,
-            strengths,
-            weaknesses,
-            recommendations,
-            evaluator_feedback
-        )
-        VALUES (
-            :assessment_id,
-            :student_id,
-            :level,
-            :grammar,
-            :vocabulary,
-            :speaking,
-            :listening,
-            :reading,
-            :writing,
-            :fluency,
-            :total,
-            CAST(:strengths AS jsonb),
-            CAST(:weaknesses AS jsonb),
-            CAST(:recommendations AS jsonb),
-            :feedback
-        )
-    ");
-    $query->execute([
-        'assessment_id' => $assessmentId,
-        'student_id' => $studentId,
-        'level' => $level,
-        'grammar' => $grammar,
-        'vocabulary' => $vocabulary,
-        'speaking' => $speaking,
-        'listening' => $listening,
-        'reading' => $reading,
-        'writing' => $writing,
-        'fluency' => $fluency,
-        'total' => $total,
-        'strengths' => json_encode($strengths, JSON_UNESCAPED_UNICODE),
-        'weaknesses' => json_encode($weaknesses, JSON_UNESCAPED_UNICODE),
-        'recommendations' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
-        'feedback' => (string)($diagnostic['feedback'] ?? ''),
-    ]);
+    diagnostic_optional_step(
+        $pdo,
+        'sp_assessment_result',
+        'resultado da avaliação não foi registrado',
+        static function () use (
+            $pdo,
+            $studentId,
+            $level,
+            $grammar,
+            $vocabulary,
+            $speaking,
+            $listening,
+            $reading,
+            $writing,
+            $fluency,
+            $total,
+            $strengths,
+            $weaknesses,
+            $recommendations,
+            $diagnostic
+        ): void {
+            $query = $pdo->prepare("
+                SELECT id
+                FROM assessments
+                WHERE assessment_type = 'initial_diagnostic'
+                LIMIT 1
+            ");
+            $query->execute();
+            $assessmentId = $query->fetchColumn();
 
-    /* Relatório detalhado do diagnóstico. */
-    $query = $pdo->prepare("
-        INSERT INTO diagnostic_reports (
-            student_id,
-            estimated_level,
-            confidence_score,
-            strengths,
-            weaknesses,
-            detected_goals,
-            written_feedback,
-            study_plan,
-            first_activity,
-            delivery_channel
-        )
-        VALUES (
-            :student_id,
-            :estimated_level,
-            :confidence_score,
-            CAST(:strengths AS jsonb),
-            CAST(:weaknesses AS jsonb),
-            CAST(:detected_goals AS jsonb),
-            :written_feedback,
-            CAST(:study_plan AS jsonb),
-            CAST(:first_activity AS jsonb),
-            :delivery_channel
-        )
-    ");
-    $query->execute([
-        'student_id' => $studentId,
-        'estimated_level' => $level,
-        'confidence_score' => $diagnostic['confidence_score'] ?? null,
-        'strengths' => json_encode($strengths, JSON_UNESCAPED_UNICODE),
-        'weaknesses' => json_encode($weaknesses, JSON_UNESCAPED_UNICODE),
-        'detected_goals' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
-        'written_feedback' => $teacherMessage !== ''
-            ? $teacherMessage
-            : (string)($diagnostic['feedback'] ?? 'Diagnóstico concluído.'),
-        'study_plan' => json_encode($studyPlan, JSON_UNESCAPED_UNICODE),
-        'first_activity' => json_encode($firstActivity, JSON_UNESCAPED_UNICODE),
-        'delivery_channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
-    ]);
+            if (!$assessmentId) {
+                $query = $pdo->prepare("
+                    INSERT INTO assessments (title, assessment_type, level, active)
+                    VALUES ('Diagnóstico Inicial', 'initial_diagnostic', :level, TRUE)
+                    RETURNING id
+                ");
+                $query->execute(['level' => $level]);
+                $assessmentId = $query->fetchColumn();
+            }
 
-    $pdo->prepare("
-        UPDATE study_plans
-        SET status = 'archived'
-        WHERE student_id = :student_id
-          AND status = 'active'
-    ")->execute(['student_id' => $studentId]);
+            if (!$assessmentId) {
+                throw new RuntimeException('Não foi possível obter a avaliação inicial.');
+            }
+
+            $query = $pdo->prepare("
+                INSERT INTO assessment_results (
+                    assessment_id,
+                    student_id,
+                    overall_level,
+                    grammar_score,
+                    vocabulary_score,
+                    speaking_score,
+                    listening_score,
+                    reading_score,
+                    writing_score,
+                    fluency_score,
+                    total_score,
+                    strengths,
+                    weaknesses,
+                    recommendations,
+                    evaluator_feedback
+                )
+                VALUES (
+                    :assessment_id,
+                    :student_id,
+                    :level,
+                    :grammar,
+                    :vocabulary,
+                    :speaking,
+                    :listening,
+                    :reading,
+                    :writing,
+                    :fluency,
+                    :total,
+                    CAST(:strengths AS jsonb),
+                    CAST(:weaknesses AS jsonb),
+                    CAST(:recommendations AS jsonb),
+                    :feedback
+                )
+            ");
+            $query->execute([
+                'assessment_id' => $assessmentId,
+                'student_id' => $studentId,
+                'level' => $level,
+                'grammar' => $grammar,
+                'vocabulary' => $vocabulary,
+                'speaking' => $speaking,
+                'listening' => $listening,
+                'reading' => $reading,
+                'writing' => $writing,
+                'fluency' => $fluency,
+                'total' => $total,
+                'strengths' => json_encode($strengths, JSON_UNESCAPED_UNICODE),
+                'weaknesses' => json_encode($weaknesses, JSON_UNESCAPED_UNICODE),
+                'recommendations' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
+                'feedback' => (string)($diagnostic['feedback'] ?? ''),
+            ]);
+        },
+        $warnings
+    );
+
+    diagnostic_optional_step(
+        $pdo,
+        'sp_diagnostic_report',
+        'relatório detalhado do diagnóstico não foi registrado',
+        static function () use (
+            $pdo,
+            $studentId,
+            $level,
+            $diagnostic,
+            $strengths,
+            $weaknesses,
+            $recommendations,
+            $teacherMessage,
+            $studyPlan,
+            $firstActivity,
+            $messageType
+        ): void {
+            $query = $pdo->prepare("
+                INSERT INTO diagnostic_reports (
+                    student_id,
+                    estimated_level,
+                    confidence_score,
+                    strengths,
+                    weaknesses,
+                    detected_goals,
+                    written_feedback,
+                    study_plan,
+                    first_activity,
+                    delivery_channel
+                )
+                VALUES (
+                    :student_id,
+                    :estimated_level,
+                    :confidence_score,
+                    CAST(:strengths AS jsonb),
+                    CAST(:weaknesses AS jsonb),
+                    CAST(:detected_goals AS jsonb),
+                    :written_feedback,
+                    CAST(:study_plan AS jsonb),
+                    CAST(:first_activity AS jsonb),
+                    :delivery_channel
+                )
+            ");
+            $query->execute([
+                'student_id' => $studentId,
+                'estimated_level' => $level,
+                'confidence_score' => $diagnostic['confidence_score'] ?? null,
+                'strengths' => json_encode($strengths, JSON_UNESCAPED_UNICODE),
+                'weaknesses' => json_encode($weaknesses, JSON_UNESCAPED_UNICODE),
+                'detected_goals' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
+                'written_feedback' => $teacherMessage !== ''
+                    ? $teacherMessage
+                    : (string)($diagnostic['feedback'] ?? 'Diagnóstico concluído.'),
+                'study_plan' => json_encode($studyPlan, JSON_UNESCAPED_UNICODE),
+                'first_activity' => json_encode($firstActivity, JSON_UNESCAPED_UNICODE),
+                'delivery_channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+            ]);
+        },
+        $warnings
+    );
 
     $levelMap = [
         'PRE-A1' => 'A1',
@@ -496,32 +627,54 @@ try {
     ];
     $targetLevel = $levelMap[$level] ?? 'A1';
 
-    $query = $pdo->prepare("
-        INSERT INTO study_plans (
-            student_id,
-            start_date,
-            end_date,
-            goal,
-            target_level,
-            status,
-            plan_data
-        )
-        VALUES (
-            :student_id,
-            CURRENT_DATE,
-            CURRENT_DATE + 28,
-            :goal,
-            :target_level,
-            'active',
-            CAST(:plan_data AS jsonb)
-        )
-    ");
-    $query->execute([
-        'student_id' => $studentId,
-        'goal' => (string)($studyPlan['goal'] ?? 'Melhorar conversação em inglês'),
-        'target_level' => $targetLevel,
-        'plan_data' => json_encode($studyPlan, JSON_UNESCAPED_UNICODE),
-    ]);
+    diagnostic_optional_step(
+        $pdo,
+        'sp_study_plan',
+        'plano de estudos não foi registrado',
+        static function () use (
+            $pdo,
+            $studentId,
+            $studyPlan,
+            $targetLevel
+        ): void {
+            $pdo->prepare("
+                UPDATE study_plans
+                SET status = 'archived'
+                WHERE student_id = :student_id
+                  AND status = 'active'
+            ")->execute(['student_id' => $studentId]);
+
+            $query = $pdo->prepare("
+                INSERT INTO study_plans (
+                    student_id,
+                    start_date,
+                    end_date,
+                    goal,
+                    target_level,
+                    status,
+                    plan_data
+                )
+                VALUES (
+                    :student_id,
+                    CURRENT_DATE,
+                    CURRENT_DATE + 28,
+                    :goal,
+                    :target_level,
+                    'active',
+                    CAST(:plan_data AS jsonb)
+                )
+            ");
+            $query->execute([
+                'student_id' => $studentId,
+                'goal' => (string)($studyPlan['goal'] ?? 'Melhorar conversação em inglês'),
+                'target_level' => $targetLevel,
+                'plan_data' => json_encode($studyPlan, JSON_UNESCAPED_UNICODE),
+            ]);
+        },
+        $warnings
+    );
+
+    $stage = 'completing_diagnostic_session';
 
     $query = $pdo->prepare("
         UPDATE sessions
@@ -553,21 +706,45 @@ try {
         'session_id' => $sessionId,
         'official_level' => $level,
         'target_level' => $targetLevel,
+        'warnings' => $warnings,
     ], 201);
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
 
-    error_log('[RS ENGLISH DIAGNOSTIC] ' . $exception->getMessage());
+    error_log(
+        '[RS ENGLISH DIAGNOSTIC ERROR] '
+        . $errorReference
+        . ' | stage='
+        . $stage
+        . ' | '
+        . get_class($exception)
+        . ' | '
+        . $exception->getMessage()
+        . ' | '
+        . $exception->getFile()
+        . ':'
+        . $exception->getLine()
+    );
 
     $response = [
         'success' => false,
         'error' => 'Não foi possível salvar o diagnóstico.',
+        'stage' => $stage,
+        'error_reference' => $errorReference,
     ];
 
-    if ((string)env('APP_ENV', 'production') !== 'production') {
+    $debugEnabled = filter_var(
+        (string)env('APP_DEBUG', 'false'),
+        FILTER_VALIDATE_BOOL
+    );
+
+    if ($debugEnabled) {
+        $response['exception'] = get_class($exception);
         $response['details'] = $exception->getMessage();
+        $response['code'] = (string)$exception->getCode();
+        $response['line'] = $exception->getLine();
     }
 
     json_response($response, 500);
