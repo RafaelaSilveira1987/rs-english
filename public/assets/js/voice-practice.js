@@ -36,16 +36,12 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     function addMessage(text,who){
         const box=document.createElement('div');
-        box.className='list-card';
-        box.style.maxWidth='82%';
-        box.style.marginLeft=who==='student'?'auto':'0';
-        box.style.background=who==='student'?'#eeefff':'#f8faff';
+        box.className=`chat-message ${who}`;
 
         const title=document.createElement('strong');
         title.textContent=who==='student'?'Você':'Emma';
 
         const p=document.createElement('p');
-        p.style.whiteSpace='pre-line';
         p.textContent=text;
 
         box.append(title,p);

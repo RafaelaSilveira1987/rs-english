@@ -1,155 +1,29 @@
 <?php
-declare(strict_types=1);
-
-require_once __DIR__.'/../../src/db.php';
-require_once __DIR__.'/../../src/auth.php';
-
-$user=require_student();
-$pdo=db();
-$studentId=$user['student_id'];
-
-$stmt=$pdo->prepare("
-SELECT *
-FROM student_preferences
-WHERE student_id=:id
-LIMIT 1
-");
-$stmt->execute(['id'=>$studentId]);
-$prefs=$stmt->fetch();
-
-if(!$prefs){
-    $pdo->prepare("
-        INSERT INTO student_preferences(student_id)
-        VALUES(:id)
-    ")->execute(['id'=>$studentId]);
-
-    $stmt->execute(['id'=>$studentId]);
-    $prefs=$stmt->fetch();
-}
-
-$success=null;
-
+declare(strict_types=1);require_once __DIR__.'/../../src/db.php';require_once __DIR__.'/../../src/auth.php';require_once __DIR__.'/../../src/ui.php';$user=require_student();$pdo=db();$studentId=$user['student_id'];
+$pdo->prepare("INSERT INTO student_preferences(student_id) VALUES(:id) ON CONFLICT(student_id) DO NOTHING")->execute(['id'=>$studentId]);
+$error=null;$success=null;
 if($_SERVER['REQUEST_METHOD']==='POST'){
-    $topics=array_values(
-        array_filter(
-            array_map('trim',explode(',',$_POST['preferred_topics'] ?? ''))
-        )
-    );
-
-    $pdo->prepare("
-        UPDATE student_preferences SET
-            daily_minutes=:daily_minutes,
-            weekly_days=:weekly_days,
-            preferred_topics=CAST(:topics AS jsonb),
-            focus_mode=:focus_mode,
-            correction_mode=:correction_mode,
-            preferred_study_time=:preferred_study_time,
-            notes=:notes,
-            updated_at=NOW()
-        WHERE student_id=:id
-    ")->execute([
-        'daily_minutes'=>(int)($_POST['daily_minutes'] ?? 20),
-        'weekly_days'=>(int)($_POST['weekly_days'] ?? 5),
-        'topics'=>json_encode($topics,JSON_UNESCAPED_UNICODE),
-        'focus_mode'=>$_POST['focus_mode'] ?? 'conversation',
-        'correction_mode'=>$_POST['correction_mode'] ?? 'balanced',
-        'preferred_study_time'=>trim($_POST['preferred_study_time'] ?? '') ?: null,
-        'notes'=>trim($_POST['notes'] ?? '') ?: null,
-        'id'=>$studentId
-    ]);
-
-    $pdo->prepare("
-        UPDATE student_profiles SET
-            correction_mode=:correction,
-            updated_at=NOW()
-        WHERE student_id=:id
-    ")->execute([
-        'correction'=>$_POST['correction_mode'] ?? 'balanced',
-        'id'=>$studentId
-    ]);
-
-    $success='Preferências salvas.';
-
-    $stmt->execute(['id'=>$studentId]);
-    $prefs=$stmt->fetch();
+    verify_csrf();
+    try{
+        $daily=max(5,min(180,(int)($_POST['daily_minutes']??20)));$weekly=max(1,min(7,(int)($_POST['weekly_days']??5)));$maxTurns=max(4,min(30,(int)($_POST['conversation_max_turns']??10)));
+        $topics=array_values(array_filter(array_map('trim',explode(',',$_POST['preferred_topics']??''))));
+        $allowedFocus=['conversation','grammar','vocabulary','business','travel'];$focus=in_array($_POST['focus_mode']??'',$allowedFocus,true)?$_POST['focus_mode']:'conversation';
+        $allowedCorrection=['light','balanced','intensive'];$correction=in_array($_POST['correction_mode']??'',$allowedCorrection,true)?$_POST['correction_mode']:'balanced';
+        $allowedStyle=['guided','free','roleplay'];$style=in_array($_POST['conversation_style']??'',$allowedStyle,true)?$_POST['conversation_style']:'guided';
+        $allowedLanguage=['adaptive','portuguese','english'];$language=in_array($_POST['explanations_language']??'',$allowedLanguage,true)?$_POST['explanations_language']:'adaptive';
+        $allowedResponse=['automatic','text','audio'];$responseMode=in_array($_POST['response_mode']??'',$allowedResponse,true)?$_POST['response_mode']:'automatic';
+        $pdo->beginTransaction();
+        $pdo->prepare("UPDATE student_preferences SET daily_minutes=:daily,weekly_days=:weekly,preferred_topics=CAST(:topics AS jsonb),focus_mode=:focus,correction_mode=:correction,preferred_study_time=:study_time,notes=:notes,conversation_topic=:topic,conversation_style=:style,conversation_max_turns=:max_turns,explanations_language=:language,response_mode=:response_mode,voice_name=:voice_name,voice_speed=:voice_speed,autoplay_audio=CAST(:autoplay AS boolean),show_transcription=CAST(:show_transcription AS boolean),updated_at=NOW() WHERE student_id=:id")->execute(['daily'=>$daily,'weekly'=>$weekly,'topics'=>json_encode($topics,JSON_UNESCAPED_UNICODE),'focus'=>$focus,'correction'=>$correction,'study_time'=>trim($_POST['preferred_study_time']??'')?:null,'notes'=>trim($_POST['notes']??'')?:null,'topic'=>$_POST['conversation_topic']??'daily_life','style'=>$style,'max_turns'=>$maxTurns,'language'=>$language,'response_mode'=>$responseMode,'voice_name'=>trim($_POST['voice_name']??'coral')?:'coral','voice_speed'=>max(.5,min(2,(float)($_POST['voice_speed']??1))),'autoplay'=>isset($_POST['autoplay_audio'])?'true':'false','show_transcription'=>isset($_POST['show_transcription'])?'true':'false','id'=>$studentId]);
+        $pdo->prepare("UPDATE student_profiles SET correction_mode=:correction,preferred_language_support=:language,updated_at=NOW() WHERE student_id=:id")->execute(['correction'=>$correction,'language'=>$language,'id'=>$studentId]);
+        $pdo->commit();$success='Preferências atualizadas com sucesso.';
+    }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();$error=$e->getMessage();}
 }
-
-$topics=implode(', ',json_decode($prefs['preferred_topics'] ?? '[]',true) ?: []);
-
-$pageTitle='Meu plano';
-require __DIR__.'/../../templates/header.php';
-?>
-
-<?php if($success): ?>
-<div class="list-card"><strong><?= htmlspecialchars($success) ?></strong></div>
-<?php endif; ?>
-
-<section class="panel">
-<form method="post">
-    <div class="grid-2" style="grid-template-columns:1fr 1fr">
-        <div class="form-row">
-            <label>Minutos por dia</label>
-            <input type="number" min="5" max="180" name="daily_minutes"
-                   value="<?= (int)$prefs['daily_minutes'] ?>">
-        </div>
-
-        <div class="form-row">
-            <label>Dias por semana</label>
-            <input type="number" min="1" max="7" name="weekly_days"
-                   value="<?= (int)$prefs['weekly_days'] ?>">
-        </div>
-    </div>
-
-    <div class="form-row">
-        <label>Temas que você gosta</label>
-        <input name="preferred_topics" value="<?= htmlspecialchars($topics) ?>"
-               placeholder="tecnologia, viagem, trabalho, séries...">
-    </div>
-
-    <div class="grid-2" style="grid-template-columns:1fr 1fr">
-        <div class="form-row">
-            <label>Foco principal</label>
-            <select name="focus_mode">
-                <?php foreach([
-                    'conversation'=>'Conversação',
-                    'grammar'=>'Gramática',
-                    'vocabulary'=>'Vocabulário',
-                    'business'=>'Business English',
-                    'travel'=>'Viagem'
-                ] as $v=>$label): ?>
-                    <option value="<?= $v ?>" <?= $prefs['focus_mode']===$v?'selected':'' ?>>
-                        <?= $label ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-
-        <div class="form-row">
-            <label>Correção</label>
-            <select name="correction_mode">
-                <?php foreach(['light','balanced','intensive'] as $v): ?>
-                    <option value="<?= $v ?>" <?= $prefs['correction_mode']===$v?'selected':'' ?>>
-                        <?= ucfirst($v) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-    </div>
-
-    <div class="form-row">
-        <label>Melhor horário para estudar</label>
-        <input name="preferred_study_time"
-               value="<?= htmlspecialchars($prefs['preferred_study_time'] ?? '') ?>"
-               placeholder="Ex.: noite, 20h">
-    </div>
-
-    <div class="form-row">
-        <label>Observações</label>
-        <textarea name="notes" rows="5"><?= htmlspecialchars($prefs['notes'] ?? '') ?></textarea>
-    </div>
-
-    <button class="btn btn-primary">Salvar</button>
-</form>
-</section>
-
-<?php require __DIR__.'/../../templates/footer.php'; ?>
+$stmt=$pdo->prepare("SELECT * FROM student_preferences WHERE student_id=:id LIMIT 1");$stmt->execute(['id'=>$studentId]);$prefs=$stmt->fetch()?:[];$topics=implode(', ',ui_json_array($prefs['preferred_topics']??[]));
+$pageTitle='Meu plano';$pageSubtitle='Ajuste a rotina, o foco e o comportamento da Emma.';require __DIR__.'/../../templates/header.php';?>
+<?php if($error):?><div class="alert danger"><?=e($error)?></div><?php endif;?><?php if($success):?><div class="alert success"><?=e($success)?></div><?php endif;?>
+<form method="post"><?=csrf_field()?>
+<div class="grid-2 equal"><section class="panel"><div class="panel-head"><div><h2>Rotina de estudo</h2><p>Defina uma frequência possível de manter.</p></div></div><div class="form-grid"><div class="form-row"><label>Minutos por dia</label><input type="number" min="5" max="180" name="daily_minutes" value="<?= (int)($prefs['daily_minutes']??20)?>"></div><div class="form-row"><label>Dias por semana</label><input type="number" min="1" max="7" name="weekly_days" value="<?= (int)($prefs['weekly_days']??5)?>"></div></div><div class="form-row"><label>Melhor horário para estudar</label><input name="preferred_study_time" value="<?=e($prefs['preferred_study_time']??'')?>" placeholder="Ex.: à noite, às 20h"></div><div class="form-row"><label>Temas que você gosta</label><input name="preferred_topics" value="<?=e($topics)?>" placeholder="tecnologia, viagem, trabalho, séries"><small class="form-help">Separe os temas por vírgulas.</small></div><div class="form-row"><label>Foco principal</label><select name="focus_mode"><?php foreach(['conversation'=>'Conversação','grammar'=>'Gramática','vocabulary'=>'Vocabulário','business'=>'Business English','travel'=>'Viagem'] as $value=>$label):?><option value="<?=e($value)?>" <?=($prefs['focus_mode']??'conversation')===$value?'selected':''?>><?=e($label)?></option><?php endforeach;?></select></div></section>
+<section class="panel"><div class="panel-head"><div><h2>Conversação com Emma</h2><p>Estas preferências são enviadas ao fluxo de prática.</p></div></div><div class="form-row"><label>Tema padrão</label><select name="conversation_topic"><?php foreach(['daily_life'=>'Rotina e dia a dia','work'=>'Trabalho e carreira','technology'=>'Tecnologia','travel'=>'Viagem','food'=>'Comida e restaurante','movies'=>'Filmes e séries','goals'=>'Planos e objetivos','job_interview'=>'Entrevista de emprego','free_conversation'=>'Conversação livre'] as $value=>$label):?><option value="<?=e($value)?>" <?=($prefs['conversation_topic']??'daily_life')===$value?'selected':''?>><?=e($label)?></option><?php endforeach;?></select></div><div class="form-grid"><div class="form-row"><label>Formato</label><select name="conversation_style"><option value="guided" <?=($prefs['conversation_style']??'guided')==='guided'?'selected':''?>>Guiada</option><option value="free" <?=($prefs['conversation_style']??'guided')==='free'?'selected':''?>>Livre</option><option value="roleplay" <?=($prefs['conversation_style']??'guided')==='roleplay'?'selected':''?>>Simulação</option></select></div><div class="form-row"><label>Interações por sessão</label><input type="number" min="4" max="30" name="conversation_max_turns" value="<?= (int)($prefs['conversation_max_turns']??10)?>"></div></div><div class="form-grid"><div class="form-row"><label>Modo de correção</label><select name="correction_mode"><option value="light" <?=($prefs['correction_mode']??'balanced')==='light'?'selected':''?>>Leve</option><option value="balanced" <?=($prefs['correction_mode']??'balanced')==='balanced'?'selected':''?>>Equilibrada</option><option value="intensive" <?=($prefs['correction_mode']??'balanced')==='intensive'?'selected':''?>>Intensiva</option></select></div><div class="form-row"><label>Idioma das explicações</label><select name="explanations_language"><option value="adaptive" <?=($prefs['explanations_language']??'adaptive')==='adaptive'?'selected':''?>>Adaptativo</option><option value="portuguese" <?=($prefs['explanations_language']??'adaptive')==='portuguese'?'selected':''?>>Português</option><option value="english" <?=($prefs['explanations_language']??'adaptive')==='english'?'selected':''?>>Inglês</option></select></div></div></section></div>
+<div class="grid-2 equal section-gap"><section class="panel"><div class="panel-head"><div><h2>Áudio</h2><p>Configure a experiência de conversação por voz.</p></div></div><div class="form-grid"><div class="form-row"><label>Resposta preferida</label><select name="response_mode"><option value="automatic" <?=($prefs['response_mode']??'automatic')==='automatic'?'selected':''?>>Automática</option><option value="text" <?=($prefs['response_mode']??'automatic')==='text'?'selected':''?>>Texto</option><option value="audio" <?=($prefs['response_mode']??'automatic')==='audio'?'selected':''?>>Áudio</option></select></div><div class="form-row"><label>Voz</label><select name="voice_name"><?php foreach(['coral','alloy','ash','ballad','echo','fable','nova','onyx','sage','shimmer'] as $voice):?><option value="<?=e($voice)?>" <?=($prefs['voice_name']??'coral')===$voice?'selected':''?>><?=e(ucfirst($voice))?></option><?php endforeach;?></select></div></div><div class="form-row"><label>Velocidade da voz</label><input type="number" min="0.5" max="2" step="0.05" name="voice_speed" value="<?=e($prefs['voice_speed']??'1.00')?>"></div><div class="form-row"><label><input type="checkbox" name="autoplay_audio" value="1" style="width:auto" <?=ui_bool($prefs['autoplay_audio']??true,true)?'checked':''?>> Reproduzir resposta automaticamente</label></div><div class="form-row"><label><input type="checkbox" name="show_transcription" value="1" style="width:auto" <?=ui_bool($prefs['show_transcription']??true,true)?'checked':''?>> Mostrar transcrição do áudio</label></div></section><section class="panel"><div class="panel-head"><div><h2>Observações</h2><p>Conte algo que ajude a personalizar seu aprendizado.</p></div></div><div class="form-row"><label>Observações para o plano</label><textarea name="notes" rows="9" placeholder="Ex.: preciso de inglês para reuniões e viagens."><?=e($prefs['notes']??'')?></textarea></div></section></div>
+<div class="form-actions"><button class="btn btn-primary" type="submit">Salvar meu plano</button></div></form>
+<?php require __DIR__.'/../../templates/footer.php';?>

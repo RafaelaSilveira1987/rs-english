@@ -1,62 +1,6 @@
 <?php
-declare(strict_types=1);
-
-require_once __DIR__.'/../src/db.php';
-require_once __DIR__.'/../src/auth.php';
-
-require_teacher_or_admin();
-
-$pdo=db();
-
-$rows=$pdo->query("
-SELECT
-    wr.id,wr.week_start,wr.week_end,wr.teacher_summary,wr.status,wr.created_at,
-    s.id student_id,s.name student_name,s.phone
-FROM weekly_reports wr
-JOIN students s ON s.id=wr.student_id
-ORDER BY wr.week_start DESC,s.name
-LIMIT 100
-")->fetchAll();
-
-$pageTitle='Relatórios';
-require __DIR__.'/../templates/header.php';
-?>
-
-<section class="panel">
-<h2>Relatórios semanais</h2>
-<p class="label">Resumo pedagógico armazenado por aluno e semana.</p>
-
-<?php if(!$rows): ?>
-<div class="list-card">
-    <strong>Ainda não há relatórios.</strong>
-    <p>Quando o workflow semanal for executado, eles aparecerão aqui.</p>
-</div>
-<?php endif; ?>
-
-<?php foreach($rows as $row): ?>
-<div class="list-card" style="margin-top:12px">
-    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
-        <div>
-            <a href="/student.php?id=<?= urlencode($row['student_id']) ?>">
-                <strong><?= htmlspecialchars($row['student_name']) ?></strong>
-            </a>
-            <p>
-                <?= date('d/m/Y',strtotime($row['week_start'])) ?>
-                a
-                <?= date('d/m/Y',strtotime($row['week_end'])) ?>
-            </p>
-        </div>
-
-        <span class="badge success"><?= htmlspecialchars($row['status']) ?></span>
-    </div>
-
-    <?php if($row['teacher_summary']): ?>
-    <p style="white-space:pre-line;color:var(--text)">
-        <?= htmlspecialchars($row['teacher_summary']) ?>
-    </p>
-    <?php endif; ?>
-</div>
-<?php endforeach; ?>
-</section>
-
-<?php require __DIR__.'/../templates/footer.php'; ?>
+declare(strict_types=1);require_once __DIR__.'/../src/db.php';require_once __DIR__.'/../src/auth.php';require_once __DIR__.'/../src/ui.php';require_teacher_or_admin();$pdo=db();$q=trim($_GET['q']??'');
+$sql="SELECT wr.id,wr.week_start,wr.week_end,wr.report_data,wr.teacher_summary,wr.status,wr.created_at,s.id student_id,s.name student_name,s.phone FROM weekly_reports wr JOIN students s ON s.id=wr.student_id";$params=[];if($q!==''){$sql.=" WHERE s.name ILIKE :q OR COALESCE(s.phone,'') ILIKE :q";$params['q']="%{$q}%";}$sql.=" ORDER BY wr.week_start DESC,s.name LIMIT 150";$stmt=$pdo->prepare($sql);$stmt->execute($params);$rows=$stmt->fetchAll();
+$pageTitle='Relatórios';$pageSubtitle='Resumos semanais vinculados ao histórico pedagógico de cada aluno.';require __DIR__.'/../templates/header.php';?>
+<section class="panel"><div class="panel-head"><div><h2>Relatórios semanais</h2><p><?=count($rows)?> relatório(s) listado(s).</p></div></div><form class="search-bar" style="grid-template-columns:1fr auto" method="get"><input name="q" value="<?=e($q)?>" placeholder="Buscar aluno ou telefone"><button class="btn btn-primary">Buscar</button></form><?php if(!$rows):?><div class="empty-state"><div class="empty-state-icon"><?=ui_icon('reports')?></div><h3>Ainda não há relatórios</h3><p>Quando o workflow semanal gerar os resumos, eles aparecerão nesta tela.</p></div><?php else:?><div class="stack"><?php foreach($rows as $row):$report=ui_json_array($row['report_data']??[]);?><article class="list-card"><div class="list-row"><div class="list-main"><a href="/student.php?id=<?=e($row['student_id'])?>"><strong><?=e($row['student_name'])?></strong></a><p><?=e(ui_date_only($row['week_start']))?> a <?=e(ui_date_only($row['week_end']))?> · Gerado em <?=e(ui_date($row['created_at']))?></p></div><span class="badge <?=e(ui_status_class($row['status']))?>"><?=e(ui_status_label($row['status']))?></span></div><?php if($row['teacher_summary']):?><p style="white-space:pre-line;color:var(--text);font-size:13px;margin-top:12px"><?=e($row['teacher_summary'])?></p><?php endif;?><?php if($report):?><div class="list-meta"><?php foreach(array_slice($report,0,3,true) as $key=>$value):if(is_scalar($value)):?><span class="badge neutral"><?=e(ucfirst(str_replace('_',' ',$key)))?>: <?=e($value)?></span><?php endif;endforeach;?></div><?php endif;?></article><?php endforeach;?></div><?php endif;?></section>
+<?php require __DIR__.'/../templates/footer.php';?>

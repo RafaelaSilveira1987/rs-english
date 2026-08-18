@@ -1,104 +1,130 @@
 <?php
 require_once __DIR__ . '/../src/auth.php';
+require_once __DIR__ . '/../src/ui.php';
 require_login();
 
 $pageTitle = $pageTitle ?? 'RS English';
+$pageSubtitle = $pageSubtitle ?? null;
 $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
 function nav_active_paths(array $paths): string
 {
     global $currentPath;
     foreach ($paths as $path) {
-        if ($currentPath === $path || str_starts_with($currentPath, rtrim($path, '/') . '/')) {
-            return 'active';
-        }
+        if ($currentPath === $path || str_starts_with($currentPath, rtrim($path, '/') . '/')) return 'active';
     }
     return '';
 }
 
+function nav_item(string $href, string $label, string $icon, array $paths): void
+{
+    echo '<a class="'.nav_active_paths($paths).'" href="'.e($href).'">';
+    echo ui_icon($icon, 'nav-icon');
+    echo '<span>'.e($label).'</span>';
+    echo '</a>';
+}
+
 $user = current_user();
 $role = $user['role'] ?? (!empty($_SESSION['legacy_admin']) ? 'admin' : null);
+$isStudentPortal = $role === 'student';
+$defaultSubtitle = $isStudentPortal
+    ? 'Seu aprendizado, progresso e prática em um só lugar.'
+    : 'Acompanhe alunos, desempenho e evolução pedagógica.';
+$homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 ?>
 <!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#111827">
-<title><?= htmlspecialchars($pageTitle) ?> - RS English</title>
-<link rel="stylesheet" href="/assets/css/app.css">
+<meta name="theme-color" content="#07112b">
+<meta name="color-scheme" content="light">
+<title><?= e($pageTitle) ?> — RS English</title>
+<link rel="icon" href="/assets/images/rs-english-mark.webp" type="image/webp">
+<link rel="stylesheet" href="/assets/css/app.css?v=10.6">
 </head>
-<body>
+<body class="role-<?= e((string)$role) ?>">
+<div class="sidebar-overlay" data-sidebar-overlay></div>
 <div class="layout">
 
-<aside class="sidebar">
-    <div class="brand">
-        <div class="brand-mark">RS</div>
-        <div>
-            <strong>RS English</strong>
-            <small>AI English Coach</small>
-        </div>
-    </div>
+<aside class="sidebar" aria-label="Navegação principal">
+    <a class="brand" href="<?= e($homeHref) ?>" aria-label="RS English — início">
+        <img src="/assets/images/rs-english-horizontal-dark.webp" alt="RS English">
+    </a>
 
-    <?php if ($role === 'student'): ?>
+    <div class="sidebar-scroll">
+    <?php if ($isStudentPortal): ?>
         <div class="nav-section">Meu aprendizado</div>
         <nav>
-            <a class="<?= nav_active_paths(['/portal/index.php']) ?>" href="/portal/index.php"><span class="nav-dot"></span> Meu progresso</a>
-            <a class="<?= nav_active_paths(['/portal/practice.php']) ?>" href="/portal/practice.php"><span class="nav-dot"></span> Praticar</a>
-            <a class="<?= nav_active_paths(['/portal/activities.php']) ?>" href="/portal/activities.php"><span class="nav-dot"></span> Atividades</a>
-            <a class="<?= nav_active_paths(['/portal/vocabulary.php']) ?>" href="/portal/vocabulary.php"><span class="nav-dot"></span> Vocabulário</a>
-            <a class="<?= nav_active_paths(['/portal/onboarding.php']) ?>" href="/portal/onboarding.php"><span class="nav-dot"></span> Meu plano</a>
-            <a class="<?= nav_active_paths(['/portal/profile.php']) ?>" href="/portal/profile.php"><span class="nav-dot"></span> Meu perfil</a>
+            <?php nav_item('/portal/index.php', 'Meu progresso', 'progress', ['/portal/index.php']); ?>
+            <?php nav_item('/portal/practice.php', 'Praticar com Emma', 'practice', ['/portal/practice.php']); ?>
+            <?php nav_item('/portal/activities.php', 'Atividades', 'activities', ['/portal/activities.php']); ?>
+            <?php nav_item('/portal/vocabulary.php', 'Vocabulário', 'vocabulary', ['/portal/vocabulary.php']); ?>
+            <?php nav_item('/portal/onboarding.php', 'Meu plano', 'plan', ['/portal/onboarding.php']); ?>
+            <?php nav_item('/portal/profile.php', 'Meu perfil', 'profile', ['/portal/profile.php']); ?>
         </nav>
     <?php else: ?>
         <div class="nav-section">Visão geral</div>
         <nav>
-            <a class="<?= nav_active_paths(['/index.php']) ?>" href="/index.php"><span class="nav-dot"></span> Dashboard</a>
-            <a class="<?= nav_active_paths(['/students.php','/student.php']) ?>" href="/students.php"><span class="nav-dot"></span> Alunos</a>
+            <?php nav_item('/index.php', 'Dashboard', 'dashboard', ['/index.php']); ?>
+            <?php nav_item('/students.php', 'Alunos', 'students', ['/students.php', '/student.php']); ?>
         </nav>
 
         <div class="nav-section">Ensino</div>
         <nav>
-            <a class="<?= nav_active_paths(['/activities.php']) ?>" href="/activities.php"><span class="nav-dot"></span> Atividades</a>
-            <a class="<?= nav_active_paths(['/knowledge.php','/knowledge-source.php']) ?>" href="/knowledge.php"><span class="nav-dot"></span> Conteúdos</a>
-            <a class="<?= nav_active_paths(['/curriculum.php']) ?>" href="/curriculum.php"><span class="nav-dot"></span> Currículo</a>
+            <?php nav_item('/activities.php', 'Atividades', 'activities', ['/activities.php']); ?>
+            <?php nav_item('/knowledge.php', 'Conteúdos', 'knowledge', ['/knowledge.php', '/knowledge-source.php']); ?>
+            <?php nav_item('/curriculum.php', 'Currículo', 'curriculum', ['/curriculum.php']); ?>
         </nav>
 
         <div class="nav-section">Análise</div>
         <nav>
-            <a class="<?= nav_active_paths(['/reports.php']) ?>" href="/reports.php"><span class="nav-dot"></span> Relatórios</a>
+            <?php nav_item('/reports.php', 'Relatórios', 'reports', ['/reports.php']); ?>
         </nav>
 
         <?php if (is_admin()): ?>
             <div class="nav-section">Administração</div>
             <nav>
-                <a class="<?= nav_active_paths(['/admin/users.php']) ?>" href="/admin/users.php"><span class="nav-dot"></span> Usuários</a>
-                <a class="<?= nav_active_paths(['/admin/teacher-settings.php']) ?>" href="/admin/teacher-settings.php"><span class="nav-dot"></span> Professor IA</a>
-                <a class="<?= nav_active_paths(['/admin/system-health.php']) ?>" href="/admin/system-health.php"><span class="nav-dot"></span> Saúde do sistema</a>
+                <?php nav_item('/admin/users.php', 'Usuários', 'users', ['/admin/users.php']); ?>
+                <?php nav_item('/admin/teacher-settings.php', 'Professor IA', 'bot', ['/admin/teacher-settings.php']); ?>
+                <?php nav_item('/admin/system-health.php', 'Saúde do sistema', 'health', ['/admin/system-health.php']); ?>
             </nav>
         <?php endif; ?>
     <?php endif; ?>
+    </div>
+
+    <div class="sidebar-user">
+        <div class="avatar avatar-sm"><?= e(ui_initials($user['name'] ?? 'RS English')) ?></div>
+        <div class="sidebar-user-copy">
+            <strong><?= e($user['name'] ?? 'Administrador') ?></strong>
+            <span><?= e(ui_role_label((string)$role)) ?></span>
+        </div>
+    </div>
 
     <div class="sidebar-footer">
         <?php if ($user): ?>
-            <a class="<?= nav_active_paths(['/change-password.php']) ?>" href="/change-password.php"><span class="nav-dot"></span> Alterar senha</a>
+            <a class="<?= nav_active_paths(['/change-password.php']) ?>" href="/change-password.php"><?= ui_icon('password', 'nav-icon') ?><span>Alterar senha</span></a>
         <?php endif; ?>
-        <a href="/logout.php"><span class="nav-dot"></span> Sair</a>
+        <a href="/logout.php"><?= ui_icon('logout', 'nav-icon') ?><span>Sair</span></a>
     </div>
 </aside>
 
 <main class="main">
 <header class="topbar">
-    <div style="display:flex;align-items:center;gap:12px">
-        <button class="mobile-menu" data-mobile-menu type="button">☰</button>
+    <div class="topbar-heading">
+        <button class="mobile-menu" data-mobile-menu type="button" aria-label="Abrir menu"><?= ui_icon('menu') ?></button>
         <div>
-            <h1><?= htmlspecialchars($pageTitle) ?></h1>
-            <p><?= $role === 'student' ? 'Seu aprendizado, progresso e prática em um só lugar.' : 'Aprendizado contínuo, progresso mensurável.' ?></p>
+            <div class="eyebrow"><?= $isStudentPortal ? 'Portal do aluno' : 'Portal pedagógico' ?></div>
+            <h1><?= e($pageTitle) ?></h1>
+            <p><?= e($pageSubtitle ?? $defaultSubtitle) ?></p>
         </div>
     </div>
 
     <div class="topbar-actions">
-        <?php if ($user): ?><span class="badge"><?= htmlspecialchars($user['name']) ?></span><?php endif; ?>
-        <span class="badge success">● Sistema online</span>
+        <div class="system-pill"><span class="status-dot"></span><span>Sistema online</span></div>
+        <div class="user-pill">
+            <div class="avatar avatar-xs"><?= e(ui_initials($user['name'] ?? 'RS')) ?></div>
+            <div><strong><?= e(ui_first_name($user['name'] ?? 'Usuário')) ?></strong><span><?= e(ui_role_label((string)$role)) ?></span></div>
+        </div>
     </div>
 </header>

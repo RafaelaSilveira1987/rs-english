@@ -166,3 +166,27 @@ Os nós do n8n permanecem para ajuste manual em:
 ```text
 docs/N8N-MANUAL-CONVERSATION-V10.4.md
 ```
+---
+
+## Atualização v10.6 — portais e identidade visual
+
+Execute por último:
+
+```text
+database/029_portal_experience.sql
+```
+
+Principais melhorias:
+
+- novo design do portal do professor e do aluno;
+- paleta oficial RS English;
+- logos aplicadas ao sistema;
+- consultas e vínculos de dados revisados;
+- preferências de conversação e áudio integradas ao portal;
+- navegação responsiva e telas de acompanhamento modernizadas.
+
+Guia:
+
+```text
+docs/INSTALL-V10.6-PORTALS.md
+```

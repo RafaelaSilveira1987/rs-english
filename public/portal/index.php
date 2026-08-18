@@ -1,160 +1,19 @@
 <?php
-declare(strict_types=1);
-
-require_once __DIR__.'/../../src/db.php';
-require_once __DIR__.'/../../src/auth.php';
-
-$user=require_student();
-$pdo=db();
-$studentId=$user['student_id'];
-
-$stmt=$pdo->prepare("
-SELECT s.*,sp.*
-FROM students s
-LEFT JOIN student_profiles sp ON sp.student_id=s.id
-WHERE s.id=:id
-LIMIT 1
-");
-$stmt->execute(['id'=>$studentId]);
-$s=$stmt->fetch();
-
-$vocabStats=$pdo->prepare("
-SELECT
- COUNT(*) FILTER(WHERE status='mastered') mastered,
- COUNT(*) FILTER(WHERE status IN ('learning','review')) learning,
- COUNT(*) FILTER(
-   WHERE status IN ('learning','review')
-   AND (next_review_at IS NULL OR next_review_at<=NOW())
- ) due
-FROM student_vocabulary
-WHERE student_id=:id
-");
-$vocabStats->execute(['id'=>$studentId]);
-$vocab=$vocabStats->fetch();
-
-$errorStmt=$pdo->prepare("
-SELECT COUNT(*)
-FROM student_errors
-WHERE student_id=:id
-  AND status='learning'
-  AND (next_review_at IS NULL OR next_review_at<=NOW())
-");
-$errorStmt->execute(['id'=>$studentId]);
-$errorDue=(int)$errorStmt->fetchColumn();
-
-$activityStmt=$pdo->prepare("
-SELECT COUNT(*)
-FROM student_activities
-WHERE student_id=:id AND status='pending'
-");
-$activityStmt->execute(['id'=>$studentId]);
-$pendingActivities=(int)$activityStmt->fetchColumn();
-
-$goalStmt=$pdo->prepare("
-SELECT *
-FROM weekly_goals
-WHERE student_id=:id
-ORDER BY week_start DESC
-LIMIT 1
-");
-$goalStmt->execute(['id'=>$studentId]);
-$goal=$goalStmt->fetch() ?: null;
-
-$planStmt=$pdo->prepare("
-SELECT *
-FROM study_plans
-WHERE student_id=:id AND status='active'
-ORDER BY created_at DESC
-LIMIT 1
-");
-$planStmt->execute(['id'=>$studentId]);
-$plan=$planStmt->fetch() ?: null;
-
-$skills=[
- 'Grammar'=>(float)($s['grammar_score'] ?? 0),
- 'Vocabulary'=>(float)($s['vocabulary_score'] ?? 0),
- 'Speaking'=>(float)($s['speaking_score'] ?? 0),
- 'Listening'=>(float)($s['listening_score'] ?? 0),
- 'Fluency'=>(float)($s['fluency_score'] ?? 0),
-];
-
-$pageTitle='Meu progresso';
-require __DIR__.'/../../templates/header.php';
-?>
-
-<section class="student-head">
-<div>
-    <span class="badge dark"><?= htmlspecialchars($s['overall_level'] ?? 'A1') ?></span>
-    <h2>Hi, <?= htmlspecialchars($s['name']) ?> 👋</h2>
-    <div class="label"><?= htmlspecialchars($s['goal'] ?? 'Aprender inglês') ?></div>
-</div>
-
-<div>
-    <div style="font-size:28px;font-weight:900"><?= (int)($s['xp'] ?? 0) ?> XP</div>
-    <div class="label"><?= (int)($s['streak_days'] ?? 0) ?> dias de sequência</div>
-</div>
-</section>
-
-<section class="cards">
-    <div class="card">
-        <div class="label">Nível atual</div>
-        <div class="metric"><?= htmlspecialchars($s['overall_level'] ?? 'A1') ?></div>
-        <div class="metric-sub">Meta: <?= htmlspecialchars($plan['target_level'] ?? '-') ?></div>
-    </div>
-
-    <div class="card">
-        <div class="label">Revisões de hoje</div>
-        <div class="metric"><?= (int)($vocab['due'] ?? 0)+$errorDue ?></div>
-        <div class="metric-sub">Vocabulário + gramática</div>
-    </div>
-
-    <div class="card">
-        <div class="label">Atividades pendentes</div>
-        <div class="metric"><?= $pendingActivities ?></div>
-        <div class="metric-sub">Seu próximo passo</div>
-    </div>
-
-    <div class="card">
-        <div class="label">Palavras dominadas</div>
-        <div class="metric"><?= (int)($vocab['mastered'] ?? 0) ?></div>
-        <div class="metric-sub"><?= (int)($vocab['learning'] ?? 0) ?> em aprendizado</div>
-    </div>
-</section>
-
-<div class="grid-2">
-<section class="panel">
-<h2>Suas competências</h2>
-
-<?php foreach($skills as $name=>$score): ?>
-<div class="skill">
-    <div class="skill-head">
-        <span><?= htmlspecialchars($name) ?></span>
-        <strong><?= number_format($score,0) ?>%</strong>
-    </div>
-    <div class="progress"><span data-progress="<?= $score ?>"></span></div>
-</div>
-<?php endforeach; ?>
-</section>
-
-<section class="panel">
-<h2>Próximo passo</h2>
-
-<div class="list-card">
-    <strong>Praticar com Emma</strong>
-    <p>Use o canal Web enquanto o WhatsApp está indisponível.</p>
-    <a class="btn btn-primary" href="/portal/practice.php" style="margin-top:10px">Começar</a>
-</div>
-
-<div class="list-card">
-    <strong>Revisões</strong>
-    <p><?= (int)($vocab['due'] ?? 0)+$errorDue ?> itens precisam aparecer novamente.</p>
-</div>
-
-<div class="list-card">
-    <strong>Atividades</strong>
-    <p><?= $pendingActivities ?> atividade(s) pendente(s).</p>
-</div>
-</section>
-</div>
-
-<?php require __DIR__.'/../../templates/footer.php'; ?>
+declare(strict_types=1);require_once __DIR__.'/../../src/db.php';require_once __DIR__.'/../../src/auth.php';require_once __DIR__.'/../../src/ui.php';$user=require_student();$pdo=db();$studentId=$user['student_id'];
+$stmt=$pdo->prepare("SELECT s.id,s.name,s.phone,s.email,s.created_at,COALESCE(sp.overall_level,'PRE-A1') overall_level,COALESCE(sp.estimated_level,'PRE-A1') estimated_level,COALESCE(sp.goal,'Aprender inglês') goal,COALESCE(sp.diagnostic_status,'pending') diagnostic_status,COALESCE(sp.diagnostic_step,0) diagnostic_step,COALESCE(sp.grammar_score,0) grammar_score,COALESCE(sp.vocabulary_score,0) vocabulary_score,COALESCE(sp.speaking_score,0) speaking_score,COALESCE(sp.listening_score,0) listening_score,COALESCE(sp.reading_score,0) reading_score,COALESCE(sp.writing_score,0) writing_score,COALESCE(sp.fluency_score,0) fluency_score,COALESCE(sp.pronunciation_score,0) pronunciation_score,COALESCE(sp.xp,0) xp,COALESCE(sp.streak_days,0) streak_days,sp.last_study_at FROM students s LEFT JOIN student_profiles sp ON sp.student_id=s.id WHERE s.id=:id LIMIT 1");$stmt->execute(['id'=>$studentId]);$s=$stmt->fetch();if(!$s){http_response_code(404);exit('Perfil do aluno não encontrado.');}
+$vocabStats=$pdo->prepare("SELECT COUNT(*) FILTER(WHERE status='mastered') mastered,COUNT(*) FILTER(WHERE status IN ('learning','review')) learning,COUNT(*) FILTER(WHERE status IN ('learning','review') AND (next_review_at IS NULL OR next_review_at<=NOW())) due FROM student_vocabulary WHERE student_id=:id");$vocabStats->execute(['id'=>$studentId]);$vocab=$vocabStats->fetch();
+$errorStmt=$pdo->prepare("SELECT COUNT(*) FROM student_errors WHERE student_id=:id AND status='learning' AND (next_review_at IS NULL OR next_review_at<=NOW())");$errorStmt->execute(['id'=>$studentId]);$errorDue=(int)$errorStmt->fetchColumn();
+$activityStmt=$pdo->prepare("SELECT COUNT(*) FROM student_activities WHERE student_id=:id AND status='pending'");$activityStmt->execute(['id'=>$studentId]);$pendingActivities=(int)$activityStmt->fetchColumn();
+$goalStmt=$pdo->prepare("SELECT * FROM weekly_goals WHERE student_id=:id ORDER BY week_start DESC LIMIT 1");$goalStmt->execute(['id'=>$studentId]);$goal=$goalStmt->fetch()?:null;
+$planStmt=$pdo->prepare("SELECT id,goal,target_level,start_date,end_date,plan_data FROM study_plans WHERE student_id=:id AND status='active' ORDER BY created_at DESC LIMIT 1");$planStmt->execute(['id'=>$studentId]);$plan=$planStmt->fetch()?:null;
+$sessionStmt=$pdo->prepare("SELECT id,channel,mode,topic,COALESCE(conversation_topic,topic,'daily_life') conversation_topic,COALESCE(turn_count,0) turn_count,COALESCE(max_turns,10) max_turns,status,created_at,ended_at FROM sessions WHERE student_id=:id ORDER BY created_at DESC LIMIT 1");$sessionStmt->execute(['id'=>$studentId]);$lastSession=$sessionStmt->fetch()?:null;
+$recentStmt=$pdo->prepare("SELECT role,content,transcription,message_type,created_at FROM messages WHERE student_id=:id ORDER BY created_at DESC LIMIT 6");$recentStmt->execute(['id'=>$studentId]);$recentMessages=$recentStmt->fetchAll();
+$skills=['Grammar'=>(float)$s['grammar_score'],'Vocabulary'=>(float)$s['vocabulary_score'],'Speaking'=>(float)$s['speaking_score'],'Listening'=>(float)$s['listening_score'],'Reading'=>(float)$s['reading_score'],'Writing'=>(float)$s['writing_score'],'Fluency'=>(float)$s['fluency_score']];
+$goalActivitiesPct=$goal&&$goal['target_activities']>0?min(100,((int)$goal['completed_activities']/(int)$goal['target_activities'])*100):0;$goalMinutesPct=$goal&&$goal['target_minutes']>0?min(100,((int)$goal['completed_minutes']/(int)$goal['target_minutes'])*100):0;
+$pageTitle='Meu progresso';$pageSubtitle='Acompanhe seu nível, prática e próximos passos.';require __DIR__.'/../../templates/header.php';?>
+<section class="hero"><div class="hero-copy"><span class="badge dark <?=e(ui_level_class($s['overall_level']))?>">Nível <?=e($s['overall_level'])?></span><h2>Olá, <?=e(ui_first_name($s['name']))?>. Vamos continuar evoluindo?</h2><p class="label"><?=e($s['goal'])?> · Último estudo: <?=e(ui_relative_date($s['last_study_at']))?></p><div class="hero-actions"><a class="btn btn-primary" href="/portal/practice.php"><?=ui_icon('practice','icon-sm')?> Praticar com Emma</a><a class="btn btn-secondary" href="/portal/activities.php"><?=ui_icon('activities','icon-sm')?> Ver atividades</a></div></div><div class="hero-stat"><strong><?= (int)$s['xp']?> XP</strong><span><?= (int)$s['streak_days']?> dias de sequência</span></div></section>
+<section class="cards"><article class="card metric-card"><div><div class="label">Nível atual</div><div class="metric"><?=e($s['overall_level'])?></div><div class="metric-sub">Meta: <?=e($plan['target_level']??'A definir')?></div></div><div class="metric-icon"><?=ui_icon('progress')?></div></article><article class="card metric-card"><a class="metric-link" href="/portal/vocabulary.php"></a><div><div class="label">Revisões de hoje</div><div class="metric"><?= (int)($vocab['due']??0)+$errorDue?></div><div class="metric-sub"><?= (int)($vocab['due']??0)?> palavras + <?=$errorDue?> correções</div></div><div class="metric-icon"><?=ui_icon('vocabulary')?></div></article><article class="card metric-card"><a class="metric-link" href="/portal/activities.php"></a><div><div class="label">Atividades pendentes</div><div class="metric"><?=$pendingActivities?></div><div class="metric-sub">Exercícios do seu plano</div></div><div class="metric-icon"><?=ui_icon('activities')?></div></article><article class="card metric-card"><a class="metric-link" href="/portal/vocabulary.php"></a><div><div class="label">Palavras dominadas</div><div class="metric"><?= (int)($vocab['mastered']??0)?></div><div class="metric-sub"><?= (int)($vocab['learning']??0)?> em aprendizado</div></div><div class="metric-icon"><?=ui_icon('sparkles')?></div></article></section>
+<div class="grid-2"><section class="panel"><div class="panel-head"><div><h2>Suas competências</h2><p>Dados atualizados pelas avaliações e conversações.</p></div></div><?php foreach($skills as $name=>$score):?><div class="skill"><div class="skill-head"><span><?=e($name)?></span><strong><?=number_format($score,0)?>%</strong></div><div class="progress"><span data-progress="<?=$score?>"></span></div></div><?php endforeach;?></section><section class="panel"><div class="panel-head"><div><h2>Meta da semana</h2><p>Consistência vale mais do que intensidade.</p></div></div><?php if(!$goal):?><div class="empty-state"><div class="empty-state-icon"><?=ui_icon('plan')?></div><h3>Meta ainda não definida</h3><p>Seu professor poderá criar uma meta semanal para acompanhar o ritmo de estudo.</p></div><?php else:?><div class="skill"><div class="skill-head"><span>Atividades</span><strong><?= (int)$goal['completed_activities']?>/<?= (int)$goal['target_activities']?></strong></div><div class="progress"><span data-progress="<?=$goalActivitiesPct?>"></span></div></div><div class="skill"><div class="skill-head"><span>Minutos de estudo</span><strong><?= (int)$goal['completed_minutes']?>/<?= (int)$goal['target_minutes']?></strong></div><div class="progress"><span data-progress="<?=$goalMinutesPct?>"></span></div></div><?php endif;?><h3>Plano ativo</h3><div class="list-card"><strong><?=e($plan['goal']??'Plano em preparação')?></strong><p><?= $plan?'Meta de nível: '.e($plan['target_level']).' · até '.e(ui_date_only($plan['end_date'])):'Conclua o diagnóstico para receber um plano personalizado.'?></p><a class="btn btn-ghost btn-sm" href="/portal/onboarding.php" style="margin-top:10px">Ver meu plano</a></div></section></div>
+<section class="panel section-gap"><div class="panel-head"><div><h2>Continuidade</h2><p>Acesso rápido ao que faz sentido agora.</p></div></div><div class="quick-actions"><a class="quick-action" href="/portal/practice.php"><div class="quick-action-icon"><?=ui_icon('practice')?></div><div><strong>Conversar com Emma</strong><span><?= $lastSession&&$lastSession['status']==='active'?'Continuar '.e(ui_topic_label($lastSession['conversation_topic'])):'Iniciar uma nova prática'?></span></div></a><a class="quick-action" href="/portal/vocabulary.php"><div class="quick-action-icon"><?=ui_icon('vocabulary')?></div><div><strong>Revisar vocabulário</strong><span><?= (int)($vocab['due']??0)?> palavra(s) para hoje</span></div></a><a class="quick-action" href="/portal/activities.php"><div class="quick-action-icon"><?=ui_icon('activities')?></div><div><strong>Fazer atividades</strong><span><?=$pendingActivities?> pendente(s)</span></div></a></div></section>
+<?php if($recentMessages):?><section class="panel section-gap"><div class="panel-head"><div><h2>Últimas interações</h2><p>Histórico mais recente vinculado ao seu cadastro.</p></div></div><div class="timeline"><?php foreach($recentMessages as $message):?><div class="timeline-item"><span class="timeline-dot"></span><strong><?= $message['role']==='teacher'?'Emma':'Você'?> · <?=e(ui_status_label($message['message_type']))?></strong><p><?=e(mb_strimwidth($message['content']?:$message['transcription']?:'',0,180,'…'))?></p><time><?=e(ui_date($message['created_at']))?></time></div><?php endforeach;?></div></section><?php endif;?>
+<?php require __DIR__.'/../../templates/footer.php';?>

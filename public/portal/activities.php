@@ -1,61 +1,6 @@
 <?php
-declare(strict_types=1);
-
-require_once __DIR__.'/../../src/db.php';
-require_once __DIR__.'/../../src/auth.php';
-
-$user=require_student();
-$pdo=db();
-
-$stmt=$pdo->prepare("
-SELECT
-    sa.id,sa.status,sa.assigned_at,sa.completed_at,sa.score,sa.xp_earned,
-    a.title,a.description,a.activity_type,a.skill,a.level,a.xp_reward,a.estimated_minutes
-FROM student_activities sa
-JOIN activities a ON a.id=sa.activity_id
-WHERE sa.student_id=:id
-ORDER BY
-    CASE WHEN sa.status='pending' THEN 0 ELSE 1 END,
-    COALESCE(sa.completed_at,sa.assigned_at) DESC
-");
-$stmt->execute(['id'=>$user['student_id']]);
-$rows=$stmt->fetchAll();
-
-$pageTitle='Minhas atividades';
-require __DIR__.'/../../templates/header.php';
-?>
-
-<section class="panel">
-<h2>Atividades</h2>
-
-<?php foreach($rows as $row): ?>
-<div class="list-card">
-    <div style="display:flex;justify-content:space-between;gap:12px">
-        <div>
-            <strong><?= htmlspecialchars($row['title']) ?></strong>
-            <p><?= htmlspecialchars($row['description'] ?? '') ?></p>
-        </div>
-
-        <span class="badge <?= $row['status']==='completed'?'success':'warning' ?>">
-            <?= htmlspecialchars($row['status']) ?>
-        </span>
-    </div>
-
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">
-        <span class="badge"><?= htmlspecialchars($row['skill'] ?? '-') ?></span>
-        <span class="badge"><?= (int)$row['estimated_minutes'] ?> min</span>
-        <span class="badge"><?= (int)$row['xp_reward'] ?> XP</span>
-
-        <?php if($row['score']!==null): ?>
-            <span class="badge success"><?= number_format((float)$row['score'],0) ?>%</span>
-        <?php endif; ?>
-    </div>
-</div>
-<?php endforeach; ?>
-
-<?php if(!$rows): ?>
-<div class="list-card"><strong>Nenhuma atividade ainda.</strong></div>
-<?php endif; ?>
-</section>
-
-<?php require __DIR__.'/../../templates/footer.php'; ?>
+declare(strict_types=1);require_once __DIR__.'/../../src/db.php';require_once __DIR__.'/../../src/auth.php';require_once __DIR__.'/../../src/ui.php';$user=require_student();$pdo=db();$status=$_GET['status']??'';$sql="SELECT sa.id,sa.status,sa.assigned_at,sa.completed_at,sa.score,sa.xp_earned,a.title,a.description,a.activity_type,a.skill,a.level,a.xp_reward,a.estimated_minutes FROM student_activities sa JOIN activities a ON a.id=sa.activity_id WHERE sa.student_id=:id";$params=['id'=>$user['student_id']];if(in_array($status,['pending','completed'],true)){$sql.=" AND sa.status=:status";$params['status']=$status;}$sql.=" ORDER BY CASE WHEN sa.status='pending' THEN 0 ELSE 1 END,COALESCE(sa.completed_at,sa.assigned_at) DESC";$stmt=$pdo->prepare($sql);$stmt->execute($params);$rows=$stmt->fetchAll();$pending=count(array_filter($rows,fn($r)=>$r['status']==='pending'));$completed=count(array_filter($rows,fn($r)=>$r['status']==='completed'));$xp=array_sum(array_map(fn($r)=>(int)$r['xp_earned'],$rows));
+$pageTitle='Minhas atividades';$pageSubtitle='Exercícios gerados a partir do seu plano, erros e vocabulário.';require __DIR__.'/../../templates/header.php';?>
+<section class="cards cards-3"><article class="card metric-card"><div><div class="label">Pendentes</div><div class="metric"><?=$pending?></div><div class="metric-sub">Próximas atividades</div></div><div class="metric-icon"><?=ui_icon('activities')?></div></article><article class="card metric-card"><div><div class="label">Concluídas</div><div class="metric"><?=$completed?></div><div class="metric-sub">No filtro atual</div></div><div class="metric-icon"><?=ui_icon('progress')?></div></article><article class="card metric-card"><div><div class="label">XP conquistado</div><div class="metric"><?=$xp?></div><div class="metric-sub">Recompensas registradas</div></div><div class="metric-icon"><?=ui_icon('sparkles')?></div></article></section>
+<section class="panel"><div class="panel-head"><div><h2>Atividades</h2><p>Priorize as atividades pendentes.</p></div><div class="filter-row" style="margin:0"><a class="btn <?=$status===''?'btn-primary':'btn-secondary'?> btn-sm" href="/portal/activities.php">Todas</a><a class="btn <?=$status==='pending'?'btn-primary':'btn-secondary'?> btn-sm" href="?status=pending">Pendentes</a><a class="btn <?=$status==='completed'?'btn-primary':'btn-secondary'?> btn-sm" href="?status=completed">Concluídas</a></div></div><?php if(!$rows):?><div class="empty-state"><div class="empty-state-icon"><?=ui_icon('activities')?></div><h3>Nenhuma atividade neste filtro</h3><p>Quando novas atividades forem atribuídas, elas aparecerão aqui.</p></div><?php else:?><div class="stack"><?php foreach($rows as $row):?><article class="list-card"><div class="list-row"><div class="list-main"><strong><?=e($row['title'])?></strong><p><?=e($row['description']??'')?></p><div class="list-meta"><span class="badge <?=e(ui_level_class($row['level']))?>"><?=e($row['level']??'—')?></span><span class="badge neutral"><?=e($row['skill']??'Geral')?></span><span class="badge neutral"><?= (int)$row['estimated_minutes']?> min</span><span class="badge neutral"><?= (int)$row['xp_reward']?> XP</span><?php if($row['score']!==null):?><span class="badge success"><?=number_format((float)$row['score'],0)?>%</span><?php endif;?></div></div><span class="badge <?=e(ui_status_class($row['status']))?>"><?=e(ui_status_label($row['status']))?></span></div></article><?php endforeach;?></div><?php endif;?></section>
+<?php require __DIR__.'/../../templates/footer.php';?>
