@@ -1,0 +1,1112 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const j = $json;\nconst s = j.student || {};\nconst preferences =\n  j.student_preferences ||\n  j.preferences ||\n  {};\n\nconst level =\n  s.overall_level ||\n  s.estimated_level ||\n  j.overall_level ||\n  j.estimated_level ||\n  'A1';\n\nconst conversation = j.conversation || {\n  session_id: null,\n\n  topic:\n    preferences.conversation_topic ||\n    'daily_life',\n\n  style:\n    preferences.conversation_style ||\n    'guided',\n\n  turn_count: 0,\n\n  max_turns:\n    Number(preferences.conversation_max_turns) ||\n    10,\n\n  remaining_turns:\n    Number(preferences.conversation_max_turns) ||\n    10,\n\n  should_wrap_up: false,\n  should_finish: false\n};\n\nconst correctionMode =\n  j.correction_mode ||\n  preferences.correction_mode ||\n  s.correction_mode ||\n  'balanced';\n\nconst languageSupport =\n  s.preferred_language_support ||\n  preferences.explanations_language ||\n  (level === 'PRE-A1'\n    ? 'portuguese'\n    : 'adaptive');\n\nconst messageType =\n  j.message_type === 'audio' ||\n  j.is_audio === true\n    ? 'audio'\n    : 'text';\n\nconst studentMessage =\n  String(j.message || '').trim();\n\nconst recentMessages =\n  Array.isArray(j.recent_messages)\n    ? j.recent_messages\n    : [];\n\nconst teacherPrompt = `\nVocê é Emma, professora particular de inglês do RS English.\n\nMODO ATUAL: CONVERSAÇÃO\n\nDADOS DO ALUNO\n\nNome:\n${s.name || j.name || 'Aluno'}\n\nNível:\n${level}\n\nObjetivo:\n${s.goal || 'Melhorar a conversação em inglês'}\n\nApoio de idioma:\n${languageSupport}\n\nModo de correção:\n${correctionMode}\n\nTipo da mensagem:\n${messageType}\n\nDADOS DA CONVERSA\n\nTema:\n${conversation.topic}\n\nFormato:\n${conversation.style}\n\nInteração:\n${conversation.turn_count} de ${conversation.max_turns}\n\nInterações restantes:\n${conversation.remaining_turns ?? ''}\n\nPreparar encerramento:\n${conversation.should_wrap_up === true}\n\nEncerrar agora:\n${conversation.should_finish === true}\n\nPLANO ATIVO\n\n${JSON.stringify(j.active_plan || {})}\n\nFRAGILIDADES CONHECIDAS\n\n${JSON.stringify(j.weaknesses || [])}\n\nVOCABULÁRIO PARA REVISÃO\n\n${JSON.stringify(j.vocabulary_review || [])}\n\nHISTÓRICO RECENTE\n\n${JSON.stringify(recentMessages)}\n\nMENSAGEM ATUAL DO ALUNO\n\n${studentMessage}\n\nOBJETIVO DA CONVERSAÇÃO\n\n- manter uma conversa natural;\n- estimular o aluno a produzir inglês;\n- corrigir sem interromper excessivamente;\n- usar a resposta anterior para continuar;\n- evitar perguntas repetidas;\n- adaptar a dificuldade ao nível do aluno.\n\nREGRA CENTRAL DE IDIOMA\n\nA correção, a confirmação do acerto e uma explicação curta podem ser feitas em português.\n\nDepois disso, a continuidade do diálogo deve ser somente em inglês.\n\nNão escreva automaticamente a pergunta em português e inglês.\n\nNão traduza a nova pergunta sem necessidade.\n\nTraduza somente quando o aluno disser algo como:\n\n- não entendi;\n- I don't understand;\n- pode traduzir?;\n- não sei o que significa;\n- não sei responder;\n- ou demonstrar bloqueio real.\n\nQUANDO A FRASE ESTIVER CORRETA\n\nUse uma confirmação curta em português e continue em inglês.\n\nExemplo:\n\nÓtimo! Sua frase está correta. 👏\n\nWhat do you usually do after work?\n\nNão escreva:\n\nQual é sua matéria favorita?\n\nWhat's your favorite subject?\n\nEscreva somente:\n\nÓtimo! Sua frase está correta. 👏\n\nWhat's your favorite subject?\n\nQUANDO HOUVER ERRO\n\nNo modo light:\n\n- corrija somente erros que prejudiquem a compreensão.\n\nNo modo balanced:\n\n- corrija no máximo 1 erro relevante.\n\nNo modo intensive:\n\n- corrija no máximo 2 erros relevantes.\n\nQuando a entrada for texto, use:\n\nVocê escreveu:\n\"I work with developer.\"\n\nQuando a entrada for áudio, use:\n\nVocê disse:\n\"I work with developer.\"\n\nDepois mostre:\n\nUma forma melhor seria:\n\"I work as a developer.\"\n\nUsamos \"work as\" para falar da profissão.\n\nWhat kind of software do you develop?\n\nNunca diga \"você escreveu\" quando message_type for audio.\n\nCONTINUIDADE\n\n- Reaja ao conteúdo antes de perguntar.\n- Faça somente uma pergunta por resposta.\n- Nunca repita a última pergunta.\n- Não repita um exercício já respondido corretamente.\n- Considere a mensagem atual uma resposta à última pergunta da Emma.\n- Use o histórico recente para continuar do ponto atual.\n- Mantenha o mesmo tema por pelo menos 3 interações.\n- Não troque de assunto abruptamente.\n- Incentive respostas um pouco maiores sem pressionar.\n- Não transforme todas as respostas em aula de gramática.\n\nEVITAR REPETIÇÃO\n\nAntes de produzir a resposta:\n\n1. verifique as últimas mensagens da Emma;\n2. identifique a última pergunta feita;\n3. confirme que a nova pergunta é diferente;\n4. use alguma informação da resposta atual do aluno;\n5. avance a conversa.\n\nSe o aluno já respondeu uma frase como:\n\n\"My name is Rafaela.\"\n\nnão peça novamente para completar:\n\n\"My name is ___.\"\n\nUse a informação e avance, por exemplo:\n\nNice to meet you, Rafaela!\n\nWhat do you do for work?\n\nADAPTAÇÃO POR NÍVEL\n\nPRE-A1:\n\n- perguntas muito curtas;\n- uma pergunta por vez;\n- dê modelo ou opções quando necessário;\n- continue em inglês simples;\n- explique em português apenas quando necessário.\n\nA1:\n\n- frases curtas;\n- temas concretos;\n- perguntas sobre rotina, trabalho e preferências;\n- uma pergunta por vez.\n\nA2:\n\n- incentive respostas de 2 ou 3 frases;\n- faça perguntas abertas simples;\n- peça motivos curtos.\n\nB1 ou superior:\n\n- peça opiniões;\n- peça exemplos;\n- faça comparações;\n- aprofunde o assunto gradualmente.\n\nQUANDO O ALUNO NÃO ENTENDER\n\nQuando o aluno disser que não entendeu:\n\n1. acolha em português;\n2. traduza somente a última pergunta;\n3. dê um exemplo curto de resposta;\n4. repita a pergunta em inglês;\n5. não encerre a conversa.\n\nExemplo:\n\nSem problema. 😊\n\n\"What do you usually do after work?\" significa:\n\n\"O que você costuma fazer depois do trabalho?\"\n\nVocê pode responder:\n\n\"I usually watch TV.\"\n\nWhat do you usually do after work?\n\nCONTROLE DA SESSÃO\n\nQuando should_wrap_up for true:\n\n- faça uma última pergunta coerente;\n- não troque de tema;\n- avise naturalmente que a conversa está chegando ao final.\n\nQuando should_finish for true:\n\n- não faça uma nova pergunta;\n- encerre com um resumo curto;\n- informe 2 pontos fortes;\n- informe até 3 correções importantes;\n- proponha uma microatividade;\n- não diga que o resultado será enviado depois.\n\nÁUDIO\n\nQuando message_type for audio:\n\n- use \"Você disse\", nunca \"Você escreveu\";\n- avalie gramática e vocabulário pela transcrição;\n- não afirme que um som específico foi pronunciado errado;\n- não dê nota absoluta de pronúncia;\n- responda de forma natural para ser convertida em áudio.\n\nFORMATO DA RESPOSTA\n\nSiga esta ordem:\n\n1. reação curta ao conteúdo;\n2. correção ou confirmação em português, quando necessária;\n3. explicação curta em português, somente quando houver correção;\n4. uma única pergunta em inglês, salvo no encerramento.\n\nNão escreva títulos como:\n\n- Correção;\n- Explicação;\n- Próxima pergunta.\n\nResponda somente com a mensagem pronta para o aluno.\n`.trim();\n\nconst evaluatorPrompt = `\nVocê é o avaliador silencioso do RS English.\n\nAvalie a mensagem do aluno sem conversar diretamente com ele.\n\nALUNO\n\nNível oficial:\n${level}\n\nModo de correção:\n${correctionMode}\n\nTipo da mensagem:\n${messageType}\n\nMENSAGEM\n\n${studentMessage}\n\nCONTEXTO DA CONVERSA\n\nTema:\n${conversation.topic}\n\nInteração:\n${conversation.turn_count} de ${conversation.max_turns}\n\nPreparar encerramento:\n${conversation.should_wrap_up === true}\n\nEncerrar agora:\n${conversation.should_finish === true}\n\nRetorne SOMENTE JSON válido:\n\n{\n  \"grammar_score\": 0,\n  \"vocabulary_score\": 0,\n  \"fluency_score\": 0,\n  \"comprehension_score\": 0,\n  \"corrections\": [],\n  \"errors\": [],\n  \"skills\": [],\n  \"session_complete\": false,\n  \"session_summary\": \"\",\n  \"summary_data\": {\n    \"strengths\": [],\n    \"important_corrections\": [],\n    \"next_activity\": \"\"\n  }\n}\n\nFORMATO DE CORRECTIONS\n\n{\n  \"correction_type\": \"grammar\",\n  \"original_text\": \"\",\n  \"corrected_text\": \"\",\n  \"explanation\": \"\",\n  \"confidence_score\": 0,\n  \"accepted\": true\n}\n\nTipos permitidos:\n\n- grammar\n- vocabulary\n- word_order\n- written\n- spoken_transcript\n- pronunciation_target\n\nREGRAS DE CORREÇÃO\n\n- no modo light, corrija somente erros que prejudiquem a compreensão;\n- no modo balanced, gere no máximo 1 correção;\n- no modo intensive, gere no máximo 2 correções;\n- não trate preferência de estilo como erro;\n- não gere correção quando a frase estiver adequada ao nível;\n- quando for áudio, use spoken_transcript;\n- não diagnostique sons específicos apenas pela transcrição.\n\nFORMATO DE ERRORS\n\n{\n  \"category\": \"grammar\",\n  \"topic\": \"present_simple\",\n  \"original\": \"\",\n  \"corrected\": \"\",\n  \"explanation\": \"\",\n  \"severity\": \"low\"\n}\n\nFORMATO DE SKILLS\n\n{\n  \"code\": \"speaking\",\n  \"score\": 0,\n  \"success\": false\n}\n\nSkills permitidas:\n\n- grammar\n- vocabulary\n- speaking\n- listening\n- reading\n- writing\n- fluency\n- pronunciation\n- past_simple\n- present_simple\n- present_continuous\n- articles\n- prepositions\n- word_order\n- irregular_verbs\n\nENCERRAMENTO\n\nQuando should_finish for true:\n\n- session_complete deve ser true;\n- session_summary deve conter um resumo curto;\n- strengths deve conter exatamente 2 pontos fortes;\n- important_corrections deve conter até 3 correções;\n- next_activity deve conter uma microatividade.\n\nCaso contrário:\n\n- session_complete deve ser false.\n`.trim();\n\nreturn [\n  {\n    json: {\n      ...j,\n      mode: 'conversation',\n      message_type: messageType,\n      correction_mode: correctionMode,\n      conversation,\n      teacher_prompt: teacherPrompt,\n      evaluator_prompt: evaluatorPrompt\n    }\n  }\n];"
+      },
+      "id": "db0ded77-5b71-499c-a4b4-8ae97d919ff2",
+      "name": "Montar Contexto Professor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3312,
+        2864
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;let text=r.output_text;if(!text&&Array.isArray(r.output)){const p=[];for(const i of r.output){for(const c of(i.content??[])){if(typeof c.text==='string')p.push(c.text)}}text=p.join('\\n')}return [{json:{teacher_message:String(text??'').trim()}}];"
+      },
+      "id": "c8140ce3-fb8e-4332-bfc5-2f977e34024f",
+      "name": "Extrair Teacher",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3808,
+        2752
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c16c38b2-48fe-42df-bf11-86481266bf60",
+              "leftValue": "={{ $json.is_audio }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "617e7dec-917b-498f-ab7e-f5ed210c104f",
+      "name": "É Áudio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1264,
+        2256
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Normalizar Entrada1').item.json.evolution_server + '/chat/getBase64FromMediaMessage/' + $('Normalizar Entrada1').item.json.evolution_instance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { message: { key: $('Normalizar Entrada1').item.json.message_key }, convertToMp4: false } }}",
+        "options": {}
+      },
+      "id": "05ea79d0-ce4c-4a5f-868c-cdfb9bfd4d7a",
+      "name": "Buscar Áudio Base64",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1728,
+        2112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base64 =\n  $json.base64 ??\n  $json.message?.base64 ??\n  '';\n\nif (!base64) {\n  throw new Error('Evolution API não retornou base64 do áudio.');\n}\n\nconst mimeType =\n  $json.mimetype ??\n  $json.mimeType ??\n  'audio/ogg';\n\nlet extension='ogg';\nif (mimeType.includes('mpeg')) extension='mp3';\nelse if (mimeType.includes('mp4')) extension='m4a';\nelse if (mimeType.includes('wav')) extension='wav';\nelse if (mimeType.includes('webm')) extension='webm';\n\nreturn [{\n  json: {\n    media_type: $json.mediaType ?? 'audio',\n    mime_type: mimeType\n  },\n  binary: {\n    data: {\n      data: base64,\n      mimeType,\n      fileName: `audio.${extension}`\n    }\n  }\n}];"
+      },
+      "id": "f135d340-64bb-42fb-8329-52903951e492",
+      "name": "Base64 para Arquivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        2112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Normalizar Entrada1').item.json;\n\nconst transcription =\n  $json.text ??\n  $json.transcript ??\n  '';\n\nif (!String(transcription).trim()) {\n  throw new Error('A transcrição do áudio veio vazia.');\n}\n\nreturn [{\n  json: {\n    ...original,\n    message: String(transcription).trim(),\n    message_type: 'audio',\n    transcription: String(transcription).trim()\n  }\n}];"
+      },
+      "id": "56e86648-7b30-4119-9479-af98c9e8ac20",
+      "name": "Usar Transcrição",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2448,
+        2112
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## RS English v3 — Texto + Áudio\n\nEsta versão mantém diagnóstico + professor e adiciona áudio.\n\nTrocar:\n- `https://SEU_DOMINIO`\n- `SUA_N8N_API_KEY`\n- `SUA_OPENAI_API_KEY`\n- `SEU_MODELO_OPENAI`\n- `SEU_MODELO_TRANSCRICAO`\n- `SUA_EVOLUTION_API_KEY`\n\nÁudio:\nEvolution → getBase64FromMediaMessage → binário → OpenAI transcription → mesmo Teacher/Evaluator.\n\nObservação: a rota usada é:\n`POST /chat/getBase64FromMediaMessage/{instance}`\n\nWebhook: `/rs-english`\n",
+        "height": 260,
+        "width": 520
+      },
+      "id": "08780e3b-8581-4273-b63a-8776d5a315af",
+      "name": "LEIA PRIMEIRO1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        480,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rs-english",
+        "options": {}
+      },
+      "id": "eac82bc6-d715-4f27-b3aa-e55dfac16b9d",
+      "name": "Webhook WhatsApp1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        560,
+        2384
+      ],
+      "webhookId": "6157b0c8-08b7-47f9-bdec-6c72f24239ba"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body=$json.body??{};\nconst data=body.data??{};\nconst key=data.key??{};\nconst m=data.message??{};\nconst jid=key.remoteJid??'';\n\nconst phone=String(jid)\n  .replace('@s.whatsapp.net','')\n  .replace('@c.us','')\n  .replace(/\\D/g,'');\n\nconst text=\n  m.conversation ??\n  m.extendedTextMessage?.text ??\n  m.imageMessage?.caption ??\n  m.videoMessage?.caption ??\n  '';\n\nconst messageType=data.messageType??'unknown';\n\nconst isAudio =\n  messageType === 'audioMessage' ||\n  messageType === 'audio' ||\n  Boolean(m.audioMessage);\n\nreturn [{json:{\n  event:body.event??'',\n  phone,\n  name:data.pushName??'Aluno',\n  message:String(text).trim(),\n  message_type:messageType,\n  is_audio:isAudio,\n  from_me:Boolean(key.fromMe),\n  is_group:jid.includes('@g.us'),\n  message_key:key,\n  message_id:key.id??'',\n  remote_jid:jid,\n  evolution_server:body.server_url??'',\n  evolution_instance:body.instance??''\n}}];"
+      },
+      "id": "26611c6a-3d4f-43b3-8ab2-62b3fbdc0507",
+      "name": "Normalizar Entrada1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7274c01c-ee2f-4fca-be10-3dd89731639c",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "messages.upsert",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cbb12ae9-790b-4fcc-8815-4a580ae4de76",
+              "leftValue": "={{ $json.from_me }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "eade29f0-377a-44ab-94f0-d2cbcc5c5e04",
+              "leftValue": "={{ $json.is_group }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "bd476680-e222-4061-afed-61090459e77a",
+              "leftValue": "={{ $json.phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "94a31a98-8bc3-4504-ab85-5a08bf8857a3",
+      "name": "Processar Mensagem?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        2384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/n8n/context.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $('Normalizar Entrada1').item.json.phone }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $('Normalizar Entrada1').item.json.name }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "608a400d-98bc-4f49-9999-702bcc43acb2",
+      "name": "Buscar Contexto PHP1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2464,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "d7843f4f-f9fe-4bec-b137-42b6baa62208",
+      "name": "Juntar Entrada + Contexto1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2704,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cff06056-8442-4319-8cf1-536ec8628136",
+              "leftValue": "={{\n  (() => {\n    const status = String(\n      $json.student?.diagnostic_status ??\n      $json.diagnostic_status ??\n      'pending'\n    ).toLowerCase();\n\n    const message = String($json.message ?? '')\n      .normalize('NFD')\n      .replace(/[\\u0300-\\u036f]/g, '')\n      .toLowerCase();\n\n    const requestedReassessment =\n      message.includes('refazer diagnostico') ||\n      message.includes('reavaliar meu nivel') ||\n      message.includes('novo diagnostico');\n\n    return (\n      $json.found === false ||\n      status !== 'completed' ||\n      requestedReassessment\n    );\n  })()\n}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8172de20-fa46-47d8-b5c3-6f32975b1d8f",
+      "name": "Precisa Diagnóstico?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2944,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json;\nconst s = j.student || {};\n\nconst currentStep = Math.max(\n  0,\n  Number(\n    s.diagnostic_step ??\n    j.diagnostic_step ??\n    0\n  ) || 0\n);\n\nconst message = String(j.message || '').trim();\nconst history = Array.isArray(j.recent_messages)\n  ? j.recent_messages\n  : [];\n\nconst officialLevel =\n  s.overall_level ||\n  j.overall_level ||\n  'PRE-A1';\n\nconst officialStatus = String(\n  s.diagnostic_status ??\n  j.diagnostic_status ??\n  'pending'\n).toLowerCase();\n\nconst normalized = message\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .toLowerCase()\n  .trim();\n\nfunction detectChoice(value) {\n  const match = value.match(/(?:^|\\b)([1-5])(?:\\b|$)/);\n  if (match) return Number(match[1]);\n\n  if (value.includes('nunca estudei')) return 1;\n  if (value.includes('algumas palavras') || value.includes('algumas expressoes')) return 2;\n  if (value.includes('frases simples')) return 3;\n  if (value.includes('dificuldade para falar') || value.includes('pronuncia')) return 4;\n  if (value.includes('mais fluencia') || value.includes('conversar em ingles')) return 5;\n\n  return null;\n}\n\nconst selfAssessmentChoice =\n  currentStep === 1\n    ? detectChoice(normalized)\n    : null;\n\nconst prompt = `\nVocê é Emma, avaliadora e professora de inglês do RS English.\n\nVocê está conduzindo um DIAGNÓSTICO INICIAL ADAPTATIVO, alinhado aos descritores do QECR/CEFR.\n\nIMPORTANTE:\n- Este é um diagnóstico pedagógico e uma estimativa de nível, não uma certificação oficial.\n- Avalie evidências de uso da língua; não classifique apenas pela autoavaliação.\n- Use descritores do tipo \"é capaz de...\" (can do).\n- Considere recepção, produção e interação.\n- Considere precisão gramatical, amplitude lexical, fluência, coerência e compreensão.\n- Para pronúncia, use evidência de áudio. Não diagnostique sons específicos apenas pela transcrição.\n- Não repita uma pergunta já respondida.\n- Faça apenas uma pergunta ou tarefa por vez.\n- Não envie duas versões da mesma pergunta em português e inglês, salvo quando o aluno pedir tradução ou demonstrar bloqueio.\n\nDADOS DO ALUNO\n\nNome:\n${s.name || j.name || 'Aluno'}\n\nStatus atual do diagnóstico:\n${officialStatus}\n\nNível já registrado:\n${officialLevel}\n\nEtapa atual:\n${currentStep}\n\nMensagem atual:\n${message}\n\nOpção de autoavaliação detectada nesta mensagem:\n${selfAssessmentChoice ?? 'não aplicável'}\n\nHistórico recente:\n${JSON.stringify(history)}\n\nESCALA QECR/CEFR PARA ORIENTAÇÃO\n\nPRE-A1:\n- reconhece palavras, expressões muito frequentes e fórmulas básicas;\n- ainda depende de modelos, opções e apoio intenso.\n\nA1:\n- usa expressões simples sobre dados pessoais, rotina e necessidades imediatas;\n- interage de modo básico com apoio e ritmo lento.\n\nA2:\n- comunica-se em tarefas simples e rotineiras;\n- descreve de forma simples experiências, ambiente e necessidades.\n\nB1:\n- compreende os pontos principais de temas familiares;\n- produz discurso simples e conectado;\n- relata experiências e explica brevemente opiniões e planos.\n\nB2:\n- interage com espontaneidade razoável;\n- produz texto claro e detalhado;\n- sustenta pontos de vista com razões e exemplos.\n\nC1:\n- usa a língua com flexibilidade e eficácia;\n- produz discurso claro, bem estruturado e detalhado;\n- compreende significados implícitos em textos e falas complexas.\n\nC2:\n- compreende praticamente tudo com facilidade;\n- resume e reconstrói informações de várias fontes;\n- expressa-se com grande precisão, naturalidade e controle de nuances.\n\nETAPAS DO DIAGNÓSTICO\n\nETAPA 0 — ACOLHIMENTO E AUTOAVALIAÇÃO\n\nEnvie esta pergunta, sem acrescentar outra tarefa:\n\n\"Olá! Eu sou a Emma, sua professora de inglês. 😊\n\nVou adaptar nosso diagnóstico ao que você já consegue fazer.\n\nQual opção combina mais com você?\n\n1. Nunca estudei inglês\n2. Sei algumas palavras e expressões\n3. Consigo formar frases simples\n4. Compreendo textos e frases, mas tenho dificuldade para falar ou pronunciar\n5. Consigo ler, entender e conversar; quero desenvolver mais fluência\"\n\nNesta etapa:\n- complete=false\n- next_step=1\n- não tente classificar definitivamente.\n\nETAPA 1 — INTERPRETAR A AUTOAVALIAÇÃO E INICIAR A AMOSTRA\n\nInterprete respostas numéricas, frases curtas ou o texto completo da opção.\n\nOpção 1:\n- faixa provisória PRE-A1;\n- português com inglês muito curto;\n- faça uma tarefa de reconhecimento com alternativas.\n\nOpção 2:\n- faixa provisória A1;\n- português como apoio;\n- peça uma resposta pessoal muito curta em inglês, com modelo.\n\nOpção 3:\n- faixa provisória A2;\n- continue em inglês simples;\n- peça 1 ou 2 frases sobre rotina, trabalho ou estudo;\n- não traduza automaticamente.\n\nOpção 4:\n- faixa provisória B1;\n- continue em inglês simples;\n- peça uma resposta de 2 ou 3 frases;\n- informe que pode escrever \"translate\" se precisar;\n- planeje solicitar um áudio em etapa posterior.\n\nOpção 5:\n- faixa provisória B2;\n- continue somente em inglês;\n- peça uma resposta aberta com opinião, razão e exemplo.\n\nSe a opção não estiver clara:\n- não diga que houve erro técnico;\n- peça apenas que responda com um número de 1 a 5;\n- não reinicie todo o diagnóstico.\n\nETAPA 2 — PRODUÇÃO E INTERAÇÃO SOBRE TEMA FAMILIAR\n\nAdapte a tarefa à faixa provisória.\n\nPRE-A1/A1:\n- dados pessoais, rotina ou preferência;\n- modelo curto quando necessário.\n\nA2:\n- peça 2 frases conectadas sobre rotina, trabalho ou estudo.\n\nB1:\n- peça para relatar uma experiência recente e dizer por que foi importante.\n\nB2+:\n- peça opinião com justificativa e exemplo.\n\nAvalie:\n- compreensão da pergunta;\n- adequação da resposta;\n- vocabulário;\n- estrutura das frases;\n- capacidade de manter interação.\n\nETAPA 3 — CONTROLE TEMPORAL E COERÊNCIA\n\nPRE-A1/A1:\n- presente simples ou sequência muito curta.\n\nA2:\n- pergunte sobre ontem ou o último fim de semana.\n\nB1:\n- peça narrativa curta no passado com começo, meio e fim.\n\nB2+:\n- peça comparação entre duas experiências ou explique uma mudança ao longo do tempo.\n\nAvalie:\n- tempos verbais;\n- conectores;\n- coerência;\n- extensão e independência da produção.\n\nETAPA 4 — OPINIÃO, PLANO E AMOSTRA ORAL\n\nPRE-A1/A1:\n- frase curta sobre gosto ou plano, com modelo.\n\nA2:\n- plano para o próximo fim de semana e uma razão.\n\nB1:\n- opinião sobre tema familiar, com razão e exemplo.\n\nB2+:\n- posição argumentada, incluindo vantagem, desvantagem ou contraponto.\n\nSe a mensagem atual não for áudio:\n- peça uma resposta de áudio curta, de 20 a 40 segundos;\n- explique que o áudio ajuda a observar fluência e inteligibilidade;\n- permita texto caso a pessoa não possa enviar áudio.\n\nSe a mensagem atual for áudio:\n- considere a amostra oral;\n- não invente problemas fonéticos;\n- avalie apenas fluência geral, inteligibilidade e organização percebidas pela transcrição e metadados disponíveis.\n\nETAPA 5 — DEVOLUTIVA FINAL\n\nConclua somente após considerar as respostas anteriores.\n\nA reply deve conter:\n- \"Nível estimado pelo QECR: X\";\n- uma explicação curta baseada em capacidades observadas;\n- 2 pontos fortes;\n- 2 ou 3 prioridades;\n- evidências observadas em linguagem simples;\n- limitações da estimativa, especialmente se não houve áudio;\n- plano inicial de 28 dias;\n- primeira atividade;\n- aviso de que o nível será refinado com novas interações.\n\nNunca diga:\n- \"em breve enviaremos\";\n- \"aguarde o resultado\";\n- \"não consegui interpretar\";\n- \"tente novamente do início\".\n\nREGRAS DE IDIOMA\n\nPRE-A1/A1:\n- explicações em português;\n- inglês curto e progressivo.\n\nA2:\n- inglês simples;\n- português só para correção ou bloqueio.\n\nB1:\n- conversa principalmente em inglês;\n- português apenas quando solicitado ou para explicar correção relevante.\n\nB2/C1/C2:\n- conversa em inglês;\n- sem tradução automática.\n\nSAÍDA OBRIGATÓRIA\n\nRetorne SOMENTE um objeto JSON válido, sem markdown e sem texto antes ou depois:\n\n{\n  \"reply\": \"\",\n  \"current_step\": ${currentStep},\n  \"next_step\": ${Math.min(currentStep + 1, 5)},\n  \"complete\": false,\n  \"self_assessment_option\": ${selfAssessmentChoice ?? 'null'},\n  \"provisional_band\": \"\",\n  \"estimated_level\": \"A1\",\n  \"confidence\": 0,\n  \"language_mode\": \"adaptive\",\n  \"translation_on_request\": true,\n  \"audio_sample_received\": ${j.is_audio === true || j.message_type === 'audio'},\n  \"scores\": {\n    \"reception\": 0,\n    \"interaction\": 0,\n    \"production\": 0,\n    \"grammar\": 0,\n    \"vocabulary\": 0,\n    \"fluency\": 0,\n    \"coherence\": 0,\n    \"pronunciation\": null\n  },\n  \"cefr_evidence\": [\n    {\n      \"activity\": \"\",\n      \"descriptor\": \"\",\n      \"observed\": false,\n      \"evidence\": \"\"\n    }\n  ],\n  \"strengths\": [],\n  \"weaknesses\": [],\n  \"recommendations\": [],\n  \"feedback\": \"\",\n  \"corrections\": [],\n  \"study_plan\": {\n    \"goal\": \"\",\n    \"duration_days\": 28,\n    \"weekly_minutes\": 100,\n    \"focus\": [],\n    \"week_1\": [],\n    \"week_2\": [],\n    \"week_3\": [],\n    \"week_4\": []\n  },\n  \"first_activity\": {\n    \"title\": \"\",\n    \"instruction\": \"\"\n  }\n}\n\nCONTROLE DA ETAPA\n\n- Se current_step for 0, next_step deve ser 1.\n- Se current_step for 1, next_step deve ser 2.\n- Se current_step for 2, next_step deve ser 3.\n- Se current_step for 3, next_step deve ser 4.\n- Se current_step for 4, next_step deve ser 5.\n- Se current_step for 5, complete deve ser true e next_step deve permanecer 5.\n- Nunca volte para uma etapa anterior.\n- Nunca repita a mesma pergunta do histórico.\n`.trim();\n\nreturn [{\n  json: {\n    ...j,\n    diagnostic_prompt: prompt,\n    diagnostic_current_step: currentStep,\n    detected_self_assessment_option: selfAssessmentChoice\n  }\n}];"
+      },
+      "id": "af95d46d-b256-4264-9626-b525adc36d98",
+      "name": "Montar Prompt Diagnóstico1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3328,
+        2336
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-4o', input: $json.diagnostic_prompt } }}",
+        "options": {}
+      },
+      "id": "0c06812a-eb6c-4920-b169-66ce0906c9de",
+      "name": "Diagnóstico IA1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3584,
+        2336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $json;\n\nlet text = response.output_text;\n\nif (!text && Array.isArray(response.output)) {\n  const parts = [];\n\n  for (const item of response.output) {\n    for (const content of item.content ?? []) {\n      if (typeof content.text === 'string') {\n        parts.push(content.text);\n      }\n    }\n  }\n\n  text = parts.join('\\n');\n}\n\ntext = String(text ?? '')\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/```$/i, '')\n  .trim();\n\nconst source = $('Montar Prompt Diagnóstico1').item.json;\nconst currentStep = Math.max(\n  0,\n  Number(\n    source.diagnostic_current_step ??\n    source.student?.diagnostic_step ??\n    source.diagnostic_step ??\n    0\n  ) || 0\n);\n\nconst message = String(source.message || '').trim();\nconst normalized = message\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .toLowerCase()\n  .trim();\n\nfunction detectChoice(value) {\n  const match = value.match(/(?:^|\\b)([1-5])(?:\\b|$)/);\n  if (match) return Number(match[1]);\n\n  if (value.includes('nunca estudei')) return 1;\n  if (value.includes('algumas palavras') || value.includes('algumas expressoes')) return 2;\n  if (value.includes('frases simples')) return 3;\n  if (value.includes('dificuldade para falar') || value.includes('pronuncia')) return 4;\n  if (value.includes('mais fluencia') || value.includes('conversar em ingles')) return 5;\n\n  return null;\n}\n\nfunction extractJson(value) {\n  if (!value) return null;\n\n  try {\n    return JSON.parse(value);\n  } catch (_) {}\n\n  const start = value.indexOf('{');\n  const end = value.lastIndexOf('}');\n\n  if (start >= 0 && end > start) {\n    try {\n      return JSON.parse(value.slice(start, end + 1));\n    } catch (_) {}\n  }\n\n  return null;\n}\n\nfunction profileForChoice(choice) {\n  const profiles = {\n    1: {\n      level: 'PRE-A1',\n      band: 'PRE-A1',\n      languageMode: 'portuguese',\n      reply: `Perfeito. Vamos começar com calma e bastante apoio em português.\n\nQual expressão significa “Meu nome é...”?\n\nA. Good morning\nB. My name is...\nC. Thank you`\n    },\n    2: {\n      level: 'A1',\n      band: 'A1 inicial',\n      languageMode: 'portuguese_support',\n      reply: `Ótimo. Vamos usar frases curtas em inglês.\n\nComplete o modelo:\n\n“My name is ____ and I live in ____.”`\n    },\n    3: {\n      level: 'A2',\n      band: 'A1/A2',\n      languageMode: 'simple_english',\n      reply: `Great! Let's continue in simple English.\n\nTell me what you do during a normal day. Write one or two sentences.\n\nIf you need help, type “translate”.`\n    },\n    4: {\n      level: 'B1',\n      band: 'A2/B1',\n      languageMode: 'simple_english',\n      reply: `Great! Let's continue in English.\n\nTell me about something you are learning or working on now. Write two or three sentences.\n\nIf you need help, type “translate”.`\n    },\n    5: {\n      level: 'B2',\n      band: 'B1/B2',\n      languageMode: 'english_only',\n      reply: `Great! We'll continue completely in English.\n\nTell me about a goal you have for this year, why it matters to you, and one challenge you expect to face.`\n    }\n  };\n\n  return profiles[choice] || null;\n}\n\nfunction deterministicFallback(step) {\n  const choice = detectChoice(normalized);\n\n  if (step === 0) {\n    return {\n      reply: `Olá! Eu sou a Emma, sua professora de inglês. 😊\n\nVou adaptar nosso diagnóstico ao que você já consegue fazer.\n\nQual opção combina mais com você?\n\n1. Nunca estudei inglês\n2. Sei algumas palavras e expressões\n3. Consigo formar frases simples\n4. Compreendo textos e frases, mas tenho dificuldade para falar ou pronunciar\n5. Consigo ler, entender e conversar; quero desenvolver mais fluência`,\n      self_assessment_option: null,\n      provisional_band: '',\n      estimated_level: 'PRE-A1',\n      language_mode: 'adaptive',\n      translation_on_request: true\n    };\n  }\n\n  if (step === 1) {\n    const profile = profileForChoice(choice);\n\n    if (profile) {\n      return {\n        reply: profile.reply,\n        self_assessment_option: choice,\n        provisional_band: profile.band,\n        estimated_level: profile.level,\n        language_mode: profile.languageMode,\n        translation_on_request: choice !== 5\n      };\n    }\n\n    return {\n      reply: `Para eu adaptar o diagnóstico, responda somente com um número de 1 a 5.\n\n1. Nunca estudei inglês\n2. Sei algumas palavras e expressões\n3. Consigo formar frases simples\n4. Compreendo, mas tenho dificuldade para falar\n5. Consigo conversar e quero desenvolver fluência`,\n      self_assessment_option: null,\n      provisional_band: '',\n      estimated_level: 'PRE-A1',\n      language_mode: 'adaptive',\n      translation_on_request: true,\n      keep_step: true\n    };\n  }\n\n  if (step === 2) {\n    return {\n      reply: `Let's talk about your routine.\n\nWhat do you usually do in the morning?\n\nYou can answer with one or two sentences.`,\n      estimated_level: source.student?.estimated_level || 'A1',\n      language_mode: 'simple_english',\n      translation_on_request: true\n    };\n  }\n\n  if (step === 3) {\n    return {\n      reply: `Tell me about something you did yesterday or last weekend.\n\nTry to explain what happened in two or three sentences.`,\n      estimated_level: source.student?.estimated_level || 'A2',\n      language_mode: 'simple_english',\n      translation_on_request: true\n    };\n  }\n\n  if (step === 4) {\n    return {\n      reply: `Please send a short audio, between 20 and 40 seconds, answering this question:\n\nWhat is one goal you have for the next few months, and why is it important to you?\n\nIf you cannot send audio now, you may answer in text.`,\n      estimated_level: source.student?.estimated_level || 'A2',\n      language_mode: 'simple_english',\n      translation_on_request: true\n    };\n  }\n\n  return {\n    reply: `Concluímos esta etapa do diagnóstico.\n\nSeu nível estimado pelo QECR será tratado como provisório até termos mais amostras de texto e áudio.\n\nPontos observados:\n• Você participou das tarefas propostas.\n• Você conseguiu produzir respostas em inglês.\n\nPrioridades iniciais:\n• ampliar vocabulário;\n• melhorar a organização das frases;\n• praticar conversação com regularidade.\n\nPrimeira atividade:\nEnvie um áudio curto se apresentando e falando sobre sua rotina.\n\nSeu nível será refinado conforme novas interações forem registradas.`,\n    estimated_level:\n      source.student?.estimated_level ||\n      source.student?.overall_level ||\n      'A1',\n    language_mode: 'adaptive',\n    translation_on_request: true,\n    confidence: 35\n  };\n}\n\nlet diagnostic = extractJson(text);\nconst parsedSuccessfully = diagnostic !== null;\n\nif (!diagnostic || typeof diagnostic !== 'object') {\n  diagnostic = deterministicFallback(currentStep);\n}\n\nconst allowedLevels = [\n  'PRE-A1',\n  'A1',\n  'A2',\n  'B1',\n  'B2',\n  'C1',\n  'C2'\n];\n\nlet estimatedLevel = String(\n  diagnostic.estimated_level ||\n  source.student?.estimated_level ||\n  source.student?.overall_level ||\n  'A1'\n).toUpperCase();\n\nif (!allowedLevels.includes(estimatedLevel)) {\n  estimatedLevel = 'A1';\n}\n\nconst detectedChoice =\n  diagnostic.self_assessment_option ??\n  source.detected_self_assessment_option ??\n  (currentStep === 1 ? detectChoice(normalized) : null);\n\ndiagnostic.current_step = currentStep;\ndiagnostic.estimated_level = estimatedLevel;\ndiagnostic.self_assessment_option =\n  detectedChoice === null || detectedChoice === undefined\n    ? null\n    : Number(detectedChoice);\n\nif (currentStep === 1 && diagnostic.keep_step === true) {\n  diagnostic.complete = false;\n  diagnostic.next_step = 1;\n} else if (currentStep >= 5) {\n  diagnostic.complete = true;\n  diagnostic.next_step = 5;\n} else {\n  diagnostic.complete = false;\n\n  const proposed = Number(diagnostic.next_step);\n  diagnostic.next_step =\n    Number.isFinite(proposed) && proposed > currentStep\n      ? Math.min(proposed, 5)\n      : currentStep + 1;\n}\n\ndelete diagnostic.keep_step;\n\ndiagnostic.confidence = Math.max(\n  0,\n  Math.min(100, Number(diagnostic.confidence ?? (parsedSuccessfully ? 55 : 25)) || 0)\n);\n\ndiagnostic.audio_sample_received =\n  Boolean(\n    diagnostic.audio_sample_received ??\n    source.is_audio === true ??\n    source.message_type === 'audio'\n  );\n\nfor (const key of [\n  'strengths',\n  'weaknesses',\n  'recommendations',\n  'corrections',\n  'cefr_evidence'\n]) {\n  if (!Array.isArray(diagnostic[key])) {\n    diagnostic[key] = [];\n  }\n}\n\nif (!diagnostic.scores || typeof diagnostic.scores !== 'object') {\n  diagnostic.scores = {};\n}\n\nif (!diagnostic.study_plan || typeof diagnostic.study_plan !== 'object') {\n  diagnostic.study_plan = {};\n}\n\nif (!diagnostic.first_activity || typeof diagnostic.first_activity !== 'object') {\n  diagnostic.first_activity = {};\n}\n\nconst recentMessages = Array.isArray(source.recent_messages)\n  ? source.recent_messages\n  : [];\n\nconst lastTeacherMessage = [...recentMessages]\n  .reverse()\n  .find(item => String(item.role || '').toLowerCase() === 'teacher');\n\nfunction normalizeForCompare(value) {\n  return String(value || '')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nif (\n  lastTeacherMessage &&\n  normalizeForCompare(lastTeacherMessage.content) ===\n    normalizeForCompare(diagnostic.reply)\n) {\n  const replacement = deterministicFallback(\n    Math.min(currentStep + 1, 5)\n  );\n\n  diagnostic.reply = replacement.reply;\n}\n\nif (!String(diagnostic.reply || '').trim()) {\n  diagnostic.reply = deterministicFallback(currentStep).reply;\n}\n\nif (diagnostic.complete) {\n  const forbidden = [\n    'em breve enviaremos',\n    'depois enviaremos',\n    'aguarde o resultado',\n    'nao consegui interpretar',\n    'não consegui interpretar'\n  ];\n\n  const normalizedReply = normalizeForCompare(diagnostic.reply);\n  const invalidFinal =\n    String(diagnostic.reply).length < 160 ||\n    forbidden.some(term => normalizedReply.includes(normalizeForCompare(term)));\n\n  if (invalidFinal) {\n    const level = diagnostic.estimated_level || 'A1';\n    const strengths = diagnostic.strengths.slice(0, 2);\n    const weaknesses = diagnostic.weaknesses.slice(0, 3);\n    const recommendations = diagnostic.recommendations.slice(0, 3);\n\n    diagnostic.reply = [\n      `Concluímos seu diagnóstico inicial.`,\n      ``,\n      `Nível estimado pelo QECR: ${level}.`,\n      ``,\n      `Esta é uma estimativa pedagógica baseada nas respostas registradas e será refinada com novas interações${diagnostic.audio_sample_received ? '.' : ' e com uma futura amostra de áudio.'}`,\n      ``,\n      `Pontos fortes:`,\n      ...(strengths.length\n        ? strengths.map(item => `• ${item}`)\n        : [\n            `• Participação nas tarefas propostas`,\n            `• Capacidade de produzir respostas em inglês`\n          ]),\n      ``,\n      `Prioridades:`,\n      ...(weaknesses.length\n        ? weaknesses.map(item => `• ${item}`)\n        : [\n            `• Ampliar vocabulário`,\n            `• Organizar frases com mais segurança`,\n            `• Desenvolver fluência na conversação`\n          ]),\n      ``,\n      `Plano inicial de 28 dias:`,\n      ...(recommendations.length\n        ? recommendations.map(item => `• ${item}`)\n        : [\n            `• prática curta de conversação`,\n            `• revisão dos erros recorrentes`,\n            `• vocabulário ligado à rotina e aos objetivos`\n          ]),\n      ``,\n      `Primeira atividade:`,\n      diagnostic.first_activity?.instruction ||\n        `Envie um áudio curto se apresentando e falando sobre sua rotina.`\n    ].join('\\n');\n  }\n}\n\nreturn [{\n  json: {\n    ...source,\n    diagnostic,\n    teacher_message: String(diagnostic.reply || '').trim(),\n    diagnostic_parse_ok: parsedSuccessfully\n  }\n}];"
+      },
+      "id": "eb746a2b-bdce-424e-9038-7aec2c385688",
+      "name": "Extrair Diagnóstico1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        2336
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "6f7e776b-6902-4599-9f8a-d551c74dc168",
+      "name": "Juntar Dados + Diagnóstico1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4064,
+        2176
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/n8n/save-diagnostic.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  phone: $('Normalizar Entrada1').item.json.phone,\n  student_name: $('Normalizar Entrada1').item.json.name,\n  student_message: $('Juntar Dados + Diagnóstico1').item.json.message,\n  teacher_message: $('Juntar Dados + Diagnóstico1').item.json.teacher_message,\n  message_type:\n    $('Normalizar Entrada1').item.json.is_audio\n      ? 'audio'\n      : 'text',\n  diagnostic: $('Juntar Dados + Diagnóstico1').item.json.diagnostic\n} }}",
+        "options": {}
+      },
+      "id": "e52fa5ac-cb37-4dd7-a91a-0682be426f00",
+      "name": "Salvar Diagnóstico PHP1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4256,
+        2176
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Normalizar Entrada1').item.json.evolution_server + '/message/sendText/' + $('Normalizar Entrada1').item.json.evolution_instance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  number: $('Normalizar Entrada1').item.json.phone,\n  text: $('Juntar Dados + Diagnóstico1').item.json.teacher_message\n} }}",
+        "options": {}
+      },
+      "id": "f1322b55-1295-4f52-a3ef-689dc0a33774",
+      "name": "Responder Diagnóstico WhatsApp1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4480,
+        2176
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-4o', input: $json.teacher_prompt } }}",
+        "options": {}
+      },
+      "id": "2c15c6c0-3a6a-43fe-8714-be33fc450003",
+      "name": "Teacher IA1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3568,
+        2752
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-4o', input: $json.evaluator_prompt } }}",
+        "options": {},
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi"
+      },
+      "id": "9dcf3521-859e-4a79-a40c-f36313f28dc8",
+      "name": "Evaluator IA1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3568,
+        2992
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json;\n\nlet text = r.output_text;\n\nif (!text && Array.isArray(r.output)) {\n  const parts = [];\n\n  for (const item of r.output) {\n    for (const content of item.content ?? []) {\n      if (typeof content.text === 'string') {\n        parts.push(content.text);\n      }\n    }\n  }\n\n  text = parts.join('\\n');\n}\n\ntext = String(text ?? '')\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/```$/i, '')\n  .trim();\n\nlet evaluation;\n\ntry {\n  evaluation = JSON.parse(text);\n} catch (error) {\n  evaluation = {\n    grammar_score: null,\n    vocabulary_score: null,\n    fluency_score: null,\n    comprehension_score: null,\n    corrections: [],\n    errors: [],\n    skills: []\n  };\n}\n\nif (!Array.isArray(evaluation.corrections)) {\n  evaluation.corrections = [];\n}\n\nif (!Array.isArray(evaluation.errors)) {\n  evaluation.errors = [];\n}\n\nif (!Array.isArray(evaluation.skills)) {\n  evaluation.skills = [];\n}\n\nreturn [{\n  json: {\n    evaluation\n  }\n}];"
+      },
+      "id": "95a3f765-6533-4cda-a377-ad05f31b4c56",
+      "name": "Extrair Avaliação1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3808,
+        2992
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "b8681863-5fd7-4a5b-8bbb-fa4f89b3722a",
+      "name": "Juntar Contexto + Teacher1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4048,
+        2816
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "c447ba28-68d2-4fe8-80eb-d4808145a746",
+      "name": "Juntar Teacher + Avaliação1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        4304,
+        2928
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/n8n/save-interaction.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  phone: $('Normalizar Entrada1').item.json.phone,\n\n  student_name:\n    $('Normalizar Entrada1').item.json.name || 'Aluno',\n\n  student_message:\n    $json.message || '',\n\n  teacher_message:\n    $json.teacher_message || '',\n\n  message_type:\n    $('Normalizar Entrada1').item.json.is_audio\n      ? 'audio'\n      : 'text',\n\n  channel: 'whatsapp',\n\n  mode: 'conversation',\n\n  topic:\n    $json.conversation?.topic ||\n    'daily_life',\n\n  conversation: {\n    style:\n      $json.conversation?.style ||\n      'guided',\n\n    max_turns:\n      Number($json.conversation?.max_turns || 10)\n  },\n\n  session_end:\n    Boolean($json.evaluation?.session_complete),\n\n  session_summary:\n    $json.evaluation?.session_summary || '',\n\n  summary_data:\n    $json.evaluation?.summary_data || {},\n\n  evaluation:\n    $json.evaluation || {}\n} }}",
+        "options": {}
+      },
+      "id": "f9824d53-3873-44eb-89fc-e4fac1b49423",
+      "name": "Salvar Interação PHP1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4848,
+        2928
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Normalizar Entrada1').item.json.evolution_server + '/message/sendText/' + $('Normalizar Entrada1').item.json.evolution_instance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  number: $('Normalizar Entrada1').item.json.phone,\n  text: $('Juntar Teacher + Avaliação1').item.json.teacher_message\n} }}",
+        "options": {}
+      },
+      "id": "c6f8928c-7f84-4ba5-8d6b-8d346188d055",
+      "name": "Responder WhatsApp1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4848,
+        3392
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        2176,
+        2112
+      ],
+      "id": "a7a67806-8fbc-4e18-88b7-3ff0d1360207",
+      "name": "Transcrever Áudio"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/n8n/save-corrections.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4848,
+        2752
+      ],
+      "id": "3284a343-d6f2-451f-b145-960f909f83b8",
+      "name": "Salvar Correções PHP"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context = $('Buscar Contexto PHP1').item.json;\nconst original = $('Normalizar Entrada1').item.json;\n\nconst studentId =\n  context.student_id ??\n  context.student?.id ??\n  '';\n\nconst corrections = Array.isArray($json.evaluation?.corrections)\n  ? $json.evaluation.corrections\n  : [];\n\nif (!studentId) {\n  throw new Error('O context.php não retornou student_id.');\n}\n\nreturn [{\n  json: {\n    student_id: studentId,\n    phone: original.phone,\n    session_id: $json.session_id ?? null,\n    channel: original.is_audio ? 'whatsapp_voice' : 'whatsapp',\n    corrections\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4624,
+        2752
+      ],
+      "id": "d6e3edbc-eee7-4635-8ea8-a30b292d41b2",
+      "name": "Preparar Payload Correções"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "09cab23f-d6c0-4a68-bc4e-6e83cec0c550",
+              "leftValue": "={{ $('Normalizar Entrada1').item.json.is_audio }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4608,
+        3248
+      ],
+      "id": "8f89575e-c034-40ea-bb18-ac2e5a9f50ad",
+      "name": "Responder com áudio?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/voice/synthesize.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  text: $('Juntar Teacher + Avaliação1').item.json.teacher_message,\n  voice: 'coral',\n  speed: 1,\n  format: 'mp3',\n  return_base64: true\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4848,
+        3152
+      ],
+      "id": "f12b2bc7-f269-46a9-8769-cedb99252596",
+      "name": "Gerar Voz Emma"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{  $('Normalizar Entrada1').item.json.evolution_server  + '/message/sendWhatsAppAudio/'  + $('Normalizar Entrada1').item.json.evolution_instance}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  number: $('Normalizar Entrada1').item.json.phone,\n  audio: $json.base64,\n  delay: 1000,\n  encoding: true\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5056,
+        3152
+      ],
+      "id": "7eae7bcb-5cff-4006-acfb-22e5b2042b07",
+      "name": "Enviar Áudio WhatsApp"
+    }
+  ],
+  "connections": {
+    "Montar Contexto Professor": {
+      "main": [
+        [
+          {
+            "node": "Teacher IA1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Evaluator IA1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Contexto + Teacher1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Teacher": {
+      "main": [
+        [
+          {
+            "node": "Juntar Contexto + Teacher1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "É Áudio?": {
+      "main": [
+        [
+          {
+            "node": "Buscar Áudio Base64",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar Contexto PHP1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Entrada + Contexto1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Áudio Base64": {
+      "main": [
+        [
+          {
+            "node": "Base64 para Arquivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Base64 para Arquivo": {
+      "main": [
+        [
+          {
+            "node": "Transcrever Áudio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usar Transcrição": {
+      "main": [
+        [
+          {
+            "node": "Buscar Contexto PHP1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Entrada + Contexto1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook WhatsApp1": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Entrada1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Entrada1": {
+      "main": [
+        [
+          {
+            "node": "Processar Mensagem?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Mensagem?1": {
+      "main": [
+        [
+          {
+            "node": "É Áudio?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Contexto PHP1": {
+      "main": [
+        [
+          {
+            "node": "Juntar Entrada + Contexto1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Entrada + Contexto1": {
+      "main": [
+        [
+          {
+            "node": "Precisa Diagnóstico?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Precisa Diagnóstico?1": {
+      "main": [
+        [
+          {
+            "node": "Montar Prompt Diagnóstico1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar Contexto Professor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Prompt Diagnóstico1": {
+      "main": [
+        [
+          {
+            "node": "Diagnóstico IA1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Dados + Diagnóstico1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagnóstico IA1": {
+      "main": [
+        [
+          {
+            "node": "Extrair Diagnóstico1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Diagnóstico1": {
+      "main": [
+        [
+          {
+            "node": "Juntar Dados + Diagnóstico1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Dados + Diagnóstico1": {
+      "main": [
+        [
+          {
+            "node": "Salvar Diagnóstico PHP1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Diagnóstico PHP1": {
+      "main": [
+        [
+          {
+            "node": "Responder Diagnóstico WhatsApp1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teacher IA1": {
+      "main": [
+        [
+          {
+            "node": "Extrair Teacher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluator IA1": {
+      "main": [
+        [
+          {
+            "node": "Extrair Avaliação1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Avaliação1": {
+      "main": [
+        [
+          {
+            "node": "Juntar Teacher + Avaliação1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Contexto + Teacher1": {
+      "main": [
+        [
+          {
+            "node": "Juntar Teacher + Avaliação1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Juntar Teacher + Avaliação1": {
+      "main": [
+        [
+          {
+            "node": "Salvar Interação PHP1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Payload Correções",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Responder com áudio?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Correções PHP": {
+      "main": [
+        []
+      ]
+    },
+    "Preparar Payload Correções": {
+      "main": [
+        [
+          {
+            "node": "Salvar Correções PHP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder com áudio?": {
+      "main": [
+        [
+          {
+            "node": "Gerar Voz Emma",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder WhatsApp1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Voz Emma": {
+      "main": [
+        [
+          {
+            "node": "Enviar Áudio WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcrever Áudio": {
+      "main": [
+        [
+          {
+            "node": "Usar Transcrição",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5f4295762b7d4461e6b80a6db87cedaa8f60d15bb0c58fcef7eda4ef7e46c10d"
+  }
+}

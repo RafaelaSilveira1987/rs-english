@@ -12,7 +12,8 @@ $raw=file_get_contents('php://input');
 $data=json_decode($raw ?: '{}',true);
 
 $message=trim((string)($data['message'] ?? ''));
-$topic=trim((string)($data['topic'] ?? 'daily_life'));
+$mode=in_array(($data['mode'] ?? 'conversation'),['conversation','diagnostic'],true)?$data['mode']:'conversation';
+$topic=trim((string)($data['topic'] ?? ($mode==='diagnostic'?'initial_diagnostic':'daily_life')));
 $style=trim((string)($data['style'] ?? 'guided'));
 $correctionMode=trim((string)($data['correction_mode'] ?? 'balanced'));
 $maxTurns=max(4,min(30,(int)($data['max_turns'] ?? 10)));
@@ -38,7 +39,7 @@ $payload=[
     'message'=>$message,
     'message_type'=>'text',
     'channel'=>'web',
-    'mode'=>'conversation',
+    'mode'=>$mode,
     'topic'=>$topic,
     'conversation'=>[
         'style'=>$style,

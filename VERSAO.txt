@@ -1,8 +1,14 @@
-RS English v10.7
+RS English v11.0 — Painel completo do aluno
 
-- Login completo implementado na página PHP/CSS
-- Logo horizontal e símbolo com fundo transparente
-- Paleta clara aplicada aos portais do professor e do aluno
-- Menu lateral claro e banners internos claros
-- Responsividade para desktop, tablet e celular
-- Sem alteração automática nos fluxos n8n
+- Dashboard do aluno com dados reais e ação adaptada ao diagnóstico
+- Diagnóstico detalhado alinhado ao QECR
+- Conversação web por texto e áudio com a Emma
+- Correções com filtros, explicação, gravidade e revisão
+- Vocabulário e atividades personalizadas
+- Execução e avaliação de atividades com histórico de tentativas
+- Progresso semanal, XP, sequência, competências e conquistas
+- Linha do tempo unificada de estudos
+- Perfil completo, preferências pedagógicas, voz e lembretes
+- Nova migration database/030_student_portal_complete.sql
+- Integração web com n8n via N8N_WEB_TEACHER_URL
+- Avaliação de atividades via N8N_WEB_ACTIVITY_URL, com fallback local

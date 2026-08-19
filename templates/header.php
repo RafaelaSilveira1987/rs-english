@@ -41,7 +41,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 <meta name="color-scheme" content="light">
 <title><?= e($pageTitle) ?> — RS English</title>
 <link rel="icon" href="/assets/images/rs-english-mark-transparent.png" type="image/png">
-<link rel="stylesheet" href="/assets/css/app.css?v=10.7">
+<link rel="stylesheet" href="/assets/css/app.css?v=11.0">
 </head>
 <body class="role-<?= e((string)$role) ?>">
 <div class="sidebar-overlay" data-sidebar-overlay></div>
@@ -56,10 +56,14 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
     <?php if ($isStudentPortal): ?>
         <div class="nav-section">Meu aprendizado</div>
         <nav>
-            <?php nav_item('/portal/index.php', 'Meu progresso', 'progress', ['/portal/index.php']); ?>
-            <?php nav_item('/portal/practice.php', 'Praticar com Emma', 'practice', ['/portal/practice.php']); ?>
-            <?php nav_item('/portal/activities.php', 'Atividades', 'activities', ['/portal/activities.php']); ?>
+            <?php nav_item('/portal/index.php', 'Início', 'dashboard', ['/portal/index.php']); ?>
+            <?php nav_item('/portal/practice.php', 'Conversar com Emma', 'practice', ['/portal/practice.php']); ?>
+            <?php nav_item('/portal/diagnostic.php', 'Meu diagnóstico', 'diagnostic', ['/portal/diagnostic.php']); ?>
+            <?php nav_item('/portal/activities.php', 'Atividades', 'activities', ['/portal/activities.php', '/portal/activity.php']); ?>
+            <?php nav_item('/portal/corrections.php', 'Correções', 'corrections', ['/portal/corrections.php']); ?>
             <?php nav_item('/portal/vocabulary.php', 'Vocabulário', 'vocabulary', ['/portal/vocabulary.php']); ?>
+            <?php nav_item('/portal/progress.php', 'Meu progresso', 'progress', ['/portal/progress.php']); ?>
+            <?php nav_item('/portal/history.php', 'Histórico', 'history', ['/portal/history.php']); ?>
             <?php nav_item('/portal/onboarding.php', 'Meu plano', 'plan', ['/portal/onboarding.php']); ?>
             <?php nav_item('/portal/profile.php', 'Meu perfil', 'profile', ['/portal/profile.php']); ?>
         </nav>

@@ -400,11 +400,17 @@ try {
 
     $grammar = (float)($scores['grammar'] ?? 0);
     $vocabulary = (float)($scores['vocabulary'] ?? 0);
-    $speaking = (float)($scores['speaking'] ?? 0);
-    $listening = (float)($scores['listening'] ?? 0);
-    $reading = (float)($scores['reading'] ?? 0);
-    $writing = (float)($scores['writing'] ?? 0);
+    $interaction = (float)($scores['interaction'] ?? 0);
+    $production = (float)($scores['production'] ?? 0);
+    $reception = (float)($scores['reception'] ?? 0);
+    $speaking = (float)($scores['speaking'] ?? ($interaction > 0 || $production > 0 ? ($interaction + $production) / 2 : 0));
+    $listening = (float)($scores['listening'] ?? $reception);
+    $reading = (float)($scores['reading'] ?? $reception);
+    $writing = (float)($scores['writing'] ?? $production);
     $fluency = (float)($scores['fluency'] ?? 0);
+    $pronunciation = isset($scores['pronunciation']) && $scores['pronunciation'] !== null
+        ? (float)$scores['pronunciation']
+        : 0.0;
 
     $stage = 'completing_student_profile';
 
@@ -425,6 +431,7 @@ try {
             reading_score = :reading,
             writing_score = :writing,
             fluency_score = :fluency,
+            pronunciation_score = :pronunciation,
             last_study_at = NOW(),
             updated_at = NOW()
         WHERE student_id = :student_id
@@ -441,6 +448,7 @@ try {
         'reading' => $reading,
         'writing' => $writing,
         'fluency' => $fluency,
+        'pronunciation' => $pronunciation,
         'student_id' => $studentId,
     ]);
 
@@ -570,7 +578,8 @@ try {
             $teacherMessage,
             $studyPlan,
             $firstActivity,
-            $messageType
+            $messageType,
+            $scores
         ): void {
             $query = $pdo->prepare("
                 INSERT INTO diagnostic_reports (
@@ -583,6 +592,10 @@ try {
                     written_feedback,
                     study_plan,
                     first_activity,
+                    scores,
+                    cefr_evidence,
+                    recommendations,
+                    raw_payload,
                     delivery_channel
                 )
                 VALUES (
@@ -595,13 +608,17 @@ try {
                     :written_feedback,
                     CAST(:study_plan AS jsonb),
                     CAST(:first_activity AS jsonb),
+                    CAST(:scores AS jsonb),
+                    CAST(:cefr_evidence AS jsonb),
+                    CAST(:recommendations AS jsonb),
+                    CAST(:raw_payload AS jsonb),
                     :delivery_channel
                 )
             ");
             $query->execute([
                 'student_id' => $studentId,
                 'estimated_level' => $level,
-                'confidence_score' => $diagnostic['confidence_score'] ?? null,
+                'confidence_score' => $diagnostic['confidence_score'] ?? $diagnostic['confidence'] ?? null,
                 'strengths' => json_encode($strengths, JSON_UNESCAPED_UNICODE),
                 'weaknesses' => json_encode($weaknesses, JSON_UNESCAPED_UNICODE),
                 'detected_goals' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
@@ -610,7 +627,11 @@ try {
                     : (string)($diagnostic['feedback'] ?? 'Diagnóstico concluído.'),
                 'study_plan' => json_encode($studyPlan, JSON_UNESCAPED_UNICODE),
                 'first_activity' => json_encode($firstActivity, JSON_UNESCAPED_UNICODE),
-                'delivery_channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+                'scores' => json_encode($scores, JSON_UNESCAPED_UNICODE),
+                'cefr_evidence' => json_encode($diagnostic['cefr_evidence'] ?? [], JSON_UNESCAPED_UNICODE),
+                'recommendations' => json_encode($recommendations, JSON_UNESCAPED_UNICODE),
+                'raw_payload' => json_encode($diagnostic, JSON_UNESCAPED_UNICODE),
+                'delivery_channel' => $messageType === 'audio' ? 'voice' : 'text',
             ]);
         },
         $warnings

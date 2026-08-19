@@ -26,7 +26,8 @@ if((int)($_FILES['audio']['size'] ?? 0)>$maxBytes){
 try{
     $mime=(string)($_FILES['audio']['type'] ?? 'audio/webm');
     $duration=(float)($_POST['duration_seconds'] ?? 0);
-    $topic=trim((string)($_POST['topic'] ?? 'daily_life'));
+    $mode=in_array(($_POST['mode'] ?? 'conversation'),['conversation','diagnostic'],true)?$_POST['mode']:'conversation';
+    $topic=trim((string)($_POST['topic'] ?? ($mode==='diagnostic'?'initial_diagnostic':'daily_life')));
     $style=trim((string)($_POST['style'] ?? 'guided'));
     $correctionMode=trim((string)($_POST['correction_mode'] ?? 'balanced'));
     $maxTurns=max(4,min(30,(int)($_POST['max_turns'] ?? 10)));
@@ -70,7 +71,7 @@ try{
         'message'=>$transcription['text'],
         'message_type'=>'audio',
         'channel'=>'web_voice',
-        'mode'=>'conversation',
+        'mode'=>$mode,
         'topic'=>$topic,
         'conversation'=>[
             'style'=>$style,
@@ -130,7 +131,8 @@ try{
         'teacher_audio_url'=>$saved['url'],
         'autoplay_audio'=>(bool)$prefs['autoplay_audio'],
         'show_transcription'=>(bool)$prefs['show_transcription'],
-        'evaluation'=>$teacher['evaluation'] ?? null
+        'evaluation'=>$teacher['evaluation'] ?? null,
+        'diagnostic'=>$teacher['diagnostic'] ?? null
     ],JSON_UNESCAPED_UNICODE);
 
 }catch(Throwable $e){

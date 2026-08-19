@@ -1,0 +1,163 @@
+{
+  "name": "RS English v11 - Avaliador de Atividades Web",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RS English v11 — Avaliação de atividades\n\nSelecione uma credencial OpenAI no nó `Avaliar Atividade IA`.\n\nNo PHP, configure:\n`N8N_WEB_ACTIVITY_URL=https://n8n.rsautomacaodigital.cloud/webhook/rs-english-activity`\n\nO webhook valida `X-API-Key` contra `N8N_API_KEY`.",
+        "height": 260,
+        "width": 500
+      },
+      "id": "7b04f00e-afed-4d88-b9a4-b9971ac14e77",
+      "name": "LEIA PRIMEIRO",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -820,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rs-english-activity",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "67cfbd0e-626c-49a7-a4a5-d1aaffc77a47",
+      "name": "Webhook Atividade",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        20
+      ],
+      "webhookId": "369f33c3-173f-4b4a-8a78-188d5e71c2f2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = $json;\nconst headers = root.headers || {};\nconst receivedKey = String(headers['x-api-key'] || headers['X-API-Key'] || '');\nconst expectedKey = String($env.N8N_API_KEY || '');\nif (!expectedKey || receivedKey !== expectedKey) throw new Error('Acesso não autorizado.');\n\nconst b = root.body ?? root;\nconst activity = b.activity || {};\nconst answer = String(b.answer || '').trim();\nif (!answer) throw new Error('Resposta obrigatória.');\n\nconst prompt = `Você é o avaliador pedagógico do RS English.\nAvalie a resposta do aluno de forma justa, de acordo com a atividade e o nível informado.\n\nATIVIDADE\nTítulo: ${activity.title || ''}\nTipo: ${activity.type || ''}\nHabilidade: ${activity.skill || ''}\nNível: ${activity.level || ''}\nInstruções: ${activity.instructions || ''}\nConteúdo: ${JSON.stringify(activity.content || {})}\n\nRESPOSTA DO ALUNO\n${answer}\n\nRetorne SOMENTE JSON válido:\n{\n  \"score\": 0,\n  \"feedback\": \"\",\n  \"corrections\": []\n}\n\nRegras:\n- score de 0 a 100;\n- feedback curto, acolhedor e específico;\n- não invente requisitos ausentes;\n- em resposta aberta, avalie adequação, clareza, gramática e vocabulário no nível esperado;\n- corrections deve conter no máximo 2 correções relevantes.`;\n\nreturn [{json:{...b,prompt}}];"
+      },
+      "id": "a7ea2bd8-ac89-4754-8eee-7396bb1621a6",
+      "name": "Validar e Montar Avaliação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-4o', input: $json.prompt } }}",
+        "options": {}
+      },
+      "id": "29ff7d97-bcd2-4063-8865-b397426d4bb1",
+      "name": "Avaliar Atividade IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -240,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json;\nlet text = r.output_text;\nif (!text && Array.isArray(r.output)) {\n  const parts = [];\n  for (const item of r.output) for (const c of (item.content || [])) if (typeof c.text === 'string') parts.push(c.text);\n  text = parts.join('\\n');\n}\ntext = String(text || '').replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/i,'').trim();\nlet result;\ntry { result = JSON.parse(text); } catch { result = {score:70,feedback:'Resposta registrada para revisão.',corrections:[]}; }\nresult.score = Math.max(0, Math.min(100, Number(result.score || 0)));\nresult.feedback = String(result.feedback || 'Resposta avaliada.');\nresult.corrections = Array.isArray(result.corrections) ? result.corrections.slice(0,2) : [];\nreturn [{json:result}];"
+      },
+      "id": "1f024f57-de57-4db5-a5b9-92097c0fbc6d",
+      "name": "Extrair Avaliação da Atividade",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "74bfd992-db2c-4445-8158-57072b3bb4d2",
+      "name": "Responder Atividade",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        280,
+        20
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Atividade": {
+      "main": [
+        [
+          {
+            "node": "Validar e Montar Avaliação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar e Montar Avaliação": {
+      "main": [
+        [
+          {
+            "node": "Avaliar Atividade IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Avaliar Atividade IA": {
+      "main": [
+        [
+          {
+            "node": "Extrair Avaliação da Atividade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Avaliação da Atividade": {
+      "main": [
+        [
+          {
+            "node": "Responder Atividade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "113b6be0-3658-46fa-be0c-27c6113ccb59",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
