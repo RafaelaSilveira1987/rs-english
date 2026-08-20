@@ -100,3 +100,9 @@ A resposta esperada pelo painel é:
 - conferência da estrutura do ZIP.
 
 A validação definitiva de consultas e permissões deve ser feita após aplicar a migration no PostgreSQL real da instalação.
+
+## Versão 12 — acolhimento adaptativo e acesso automático
+
+Execute `database/031_adaptive_onboarding_access.sql` e importe `docs/fluxos/rs-english-n8n-v12-adaptive-access.json`.
+
+Guia: `docs/INSTALL-V12-ADAPTIVE-ACCESS.md`.

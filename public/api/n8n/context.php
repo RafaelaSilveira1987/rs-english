@@ -5,11 +5,13 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../../src/db.php';
 require_once __DIR__ . '/../../../src/api.php';
 require_once __DIR__ . '/../../../src/conversation.php';
+require_once __DIR__ . '/../../../src/access.php';
 
 require_n8n_key();
 
 $phone = normalize_phone($_GET['phone'] ?? '');
 $name = trim((string)($_GET['name'] ?? 'Aluno'));
+$incomingMessage = trim((string)($_GET['message'] ?? ''));
 
 if ($phone === '') {
     json_response([
@@ -39,6 +41,10 @@ $findStudent = static function (PDO $pdo, string $phone): array|false {
             COALESCE(sp.goal, 'Aprender inglês') AS goal,
             COALESCE(sp.correction_mode, 'balanced') AS correction_mode,
             COALESCE(sp.preferred_language_support, 'portuguese') AS preferred_language_support,
+            COALESCE(sp.support_mode, 'pt_first') AS support_mode,
+            COALESCE(sp.teaching_mode, 'foundations') AS teaching_mode,
+            COALESCE(sp.preferred_explanation_language, 'pt-BR') AS preferred_explanation_language,
+            COALESCE(sp.diagnostic_confidence, 0) AS diagnostic_confidence,
             COALESCE(sp.diagnostic_status, 'pending') AS diagnostic_status,
             COALESCE(sp.diagnostic_step, 0) AS diagnostic_step,
             COALESCE(sp.grammar_score, 0) AS grammar_score,
@@ -67,6 +73,7 @@ $findStudent = static function (PDO $pdo, string $phone): array|false {
 };
 
 $student = $findStudent($pdo, $phone);
+$studentWasCreated = false;
 
 /*
 |--------------------------------------------------------------------------
@@ -116,6 +123,10 @@ if (!$student) {
                 goal,
                 correction_mode,
                 preferred_language_support,
+                support_mode,
+                teaching_mode,
+                preferred_explanation_language,
+                diagnostic_confidence,
                 pre_a1
             )
             VALUES (
@@ -128,6 +139,10 @@ if (!$student) {
                 'Aprender inglês',
                 'balanced',
                 'portuguese',
+                'pt_first',
+                'foundations',
+                'pt-BR',
+                0,
                 TRUE
             )
             ON CONFLICT (student_id) DO NOTHING
@@ -135,6 +150,7 @@ if (!$student) {
         $createProfile->execute(['student_id' => $studentId]);
 
         $pdo->commit();
+        $studentWasCreated = true;
 
         $student = $findStudent($pdo, $phone);
 
@@ -164,6 +180,43 @@ if (!$student) {
 
         json_response($response, 500);
     }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Usuário do portal vinculado ao mesmo aluno
+|--------------------------------------------------------------------------
+*/
+$normalizedRequest = strtolower(strtr($incomingMessage, [
+    'á'=>'a','à'=>'a','ã'=>'a','â'=>'a','ä'=>'a','Á'=>'a','À'=>'a','Ã'=>'a','Â'=>'a','Ä'=>'a',
+    'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','É'=>'e','È'=>'e','Ê'=>'e','Ë'=>'e',
+    'í'=>'i','ì'=>'i','î'=>'i','ï'=>'i','Í'=>'i','Ì'=>'i','Î'=>'i','Ï'=>'i',
+    'ó'=>'o','ò'=>'o','õ'=>'o','ô'=>'o','ö'=>'o','Ó'=>'o','Ò'=>'o','Õ'=>'o','Ô'=>'o','Ö'=>'o',
+    'ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u','Ú'=>'u','Ù'=>'u','Û'=>'u','Ü'=>'u',
+    'ç'=>'c','Ç'=>'c'
+]));
+$accessRequested = (bool)preg_match('/\b(acesso|portal|login|senha|cadastro)\b/', $normalizedRequest);
+$portalAccess = [
+    'ok' => false,
+    'requested' => $accessRequested,
+    'login_url' => access_base_url() . '/login.php',
+];
+
+try {
+    $portalAccess = ensure_student_portal_access(
+        $pdo,
+        (string)$student['id'],
+        (string)($student['name'] ?? $name),
+        $phone,
+        $student['email'] ?? null,
+        true,
+        $accessRequested,
+        $accessRequested ? 'whatsapp_request' : ($studentWasCreated ? 'first_contact' : 'automatic')
+    );
+    $portalAccess['requested'] = $accessRequested;
+} catch (Throwable $accessException) {
+    error_log('[RS ENGLISH ACCESS] ' . $accessException->getMessage());
+    $portalAccess['error'] = 'O acesso ao portal ainda não pôde ser preparado.';
 }
 
 /*
@@ -372,4 +425,5 @@ json_response([
     'active_plan' => $activePlan,
     'student_preferences' => $studentPreferences,
     'conversation' => $conversation,
+    'portal_access' => $portalAccess,
 ]);

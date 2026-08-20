@@ -35,6 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $focusMode = in_array($_POST['focus_mode'] ?? '', ['conversation', 'grammar', 'vocabulary', 'balanced'], true) ? $_POST['focus_mode'] : 'conversation';
             $correctionMode = in_array($_POST['correction_mode'] ?? '', ['light', 'balanced', 'intensive'], true) ? $_POST['correction_mode'] : 'balanced';
             $language = in_array($_POST['explanations_language'] ?? '', ['adaptive', 'portuguese', 'english'], true) ? $_POST['explanations_language'] : 'adaptive';
+            $supportMode = in_array($_POST['support_mode'] ?? '', ['pt_first', 'bilingual', 'english_first', 'english_only'], true) ? $_POST['support_mode'] : 'pt_first';
+            $teachingMode = in_array($_POST['teaching_mode'] ?? '', ['foundations', 'guided', 'guided_conversation', 'conversation', 'immersion'], true) ? $_POST['teaching_mode'] : 'foundations';
+            $preferredExplanationLanguage = $language === 'portuguese' ? 'pt-BR' : ($language === 'english' ? 'en' : 'adaptive');
             $responseMode = in_array($_POST['response_mode'] ?? '', ['automatic', 'text', 'audio'], true) ? $_POST['response_mode'] : 'automatic';
             $voiceName = in_array($_POST['voice_name'] ?? '', ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse'], true) ? $_POST['voice_name'] : 'coral';
             $voiceSpeed = max(0.75, min(1.35, (float)($_POST['voice_speed'] ?? 1)));
@@ -104,8 +107,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'preferred_study_time' => $preferredStudyTime,
             ]);
 
-            $pdo->prepare('UPDATE student_profiles SET correction_mode = :mode, updated_at = NOW() WHERE student_id = :student_id')
-                ->execute(['mode' => $correctionMode, 'student_id' => $user['student_id']]);
+            $pdo->prepare('UPDATE student_profiles SET correction_mode = :mode, preferred_language_support = :language, support_mode = :support_mode, teaching_mode = :teaching_mode, preferred_explanation_language = :preferred_explanation_language, updated_at = NOW() WHERE student_id = :student_id')
+                ->execute([
+                    'mode' => $correctionMode,
+                    'language' => $language,
+                    'support_mode' => $supportMode,
+                    'teaching_mode' => $teachingMode,
+                    'preferred_explanation_language' => $preferredExplanationLanguage,
+                    'student_id' => $user['student_id'],
+                ]);
             $success = 'Preferências de aprendizagem atualizadas.';
         }
 
@@ -183,6 +193,8 @@ require __DIR__ . '/../../templates/header.php';
             <div class="form-row"><label>Foco principal</label><select name="focus_mode"><?php foreach (['conversation'=>'Conversação','grammar'=>'Gramática','vocabulary'=>'Vocabulário','balanced'=>'Equilibrado'] as $value=>$label): ?><option value="<?= e($value) ?>" <?= $profile['focus_mode']===$value?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select></div>
             <div class="form-row"><label>Modo de correção</label><select name="correction_mode"><option value="light" <?= $profile['correction_mode']==='light'?'selected':'' ?>>Leve — somente erros importantes</option><option value="balanced" <?= $profile['correction_mode']==='balanced'?'selected':'' ?>>Equilibrado — principais correções</option><option value="intensive" <?= $profile['correction_mode']==='intensive'?'selected':'' ?>>Intensivo — correção detalhada</option></select></div>
             <div class="form-row"><label>Idioma das explicações</label><select name="explanations_language"><option value="adaptive" <?= $profile['explanations_language']==='adaptive'?'selected':'' ?>>Adaptativo ao nível</option><option value="portuguese" <?= $profile['explanations_language']==='portuguese'?'selected':'' ?>>Principalmente português</option><option value="english" <?= $profile['explanations_language']==='english'?'selected':'' ?>>Principalmente inglês</option></select></div>
+            <div class="form-row"><label>Como a Emma deve falar comigo</label><select name="support_mode"><option value="pt_first" <?= $profile['support_mode']==='pt_first'?'selected':'' ?>>Português primeiro, inglês aos poucos</option><option value="bilingual" <?= $profile['support_mode']==='bilingual'?'selected':'' ?>>Português e inglês</option><option value="english_first" <?= $profile['support_mode']==='english_first'?'selected':'' ?>>Inglês primeiro, português quando necessário</option><option value="english_only" <?= $profile['support_mode']==='english_only'?'selected':'' ?>>Somente inglês</option></select></div>
+            <div class="form-row"><label>Formato de ensino</label><select name="teaching_mode"><option value="foundations" <?= $profile['teaching_mode']==='foundations'?'selected':'' ?>>Começar do zero</option><option value="guided" <?= $profile['teaching_mode']==='guided'?'selected':'' ?>>Prática guiada</option><option value="guided_conversation" <?= $profile['teaching_mode']==='guided_conversation'?'selected':'' ?>>Conversação com apoio</option><option value="conversation" <?= $profile['teaching_mode']==='conversation'?'selected':'' ?>>Conversação</option><option value="immersion" <?= $profile['teaching_mode']==='immersion'?'selected':'' ?>>Imersão</option></select></div>
             <div class="form-row"><label>Horário preferido</label><select name="preferred_study_time"><option value="" <?= empty($profile['preferred_study_time'])?'selected':'' ?>>Sem preferência</option><option value="morning" <?= $profile['preferred_study_time']==='morning'?'selected':'' ?>>Manhã</option><option value="afternoon" <?= $profile['preferred_study_time']==='afternoon'?'selected':'' ?>>Tarde</option><option value="evening" <?= $profile['preferred_study_time']==='evening'?'selected':'' ?>>Noite</option></select></div>
         </section>
 

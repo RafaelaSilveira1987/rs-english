@@ -1,0 +1,787 @@
+{
+  "name": "RS English v12 - Portal Web Adaptativo",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RS English v12 — Portal Web Adaptativo\n\nImporte junto da v12 WhatsApp.\n\n- Primeiro contato do diagnóstico sempre em português.\n- Mesmos support_mode e teaching_mode do aluno.\n- Execute a migration 031.\n- Selecione a credencial OpenAI nos nós de IA.\n- Configure N8N_WEB_TEACHER_URL para este webhook.",
+        "height": 330,
+        "width": 520
+      },
+      "id": "c25c98b0-80eb-49f4-8144-401947be4f1e",
+      "name": "LEIA PRIMEIRO",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        -540
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rs-english-web",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a9e304af-8a3d-44e8-8639-a0dca62cb2a4",
+      "name": "Webhook Portal Web",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        20
+      ],
+      "webhookId": "407e601a-9095-46e1-a652-f5ec4bbde22f"
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = $json;\nconst headers = root.headers || {};\nconst receivedKey = String(headers['x-api-key'] || headers['X-API-Key'] || '');\nconst expectedKey = String($env.N8N_API_KEY || '');\n\nif (!expectedKey || !receivedKey || receivedKey !== expectedKey) {\n  throw new Error('Acesso não autorizado ao webhook do portal.');\n}\n\nconst b = root.body ?? root;\nconst mode = ['conversation', 'diagnostic'].includes(String(b.mode || 'conversation'))\n  ? String(b.mode || 'conversation')\n  : 'conversation';\n\nconst message = String(b.message || '').trim();\nif (!message) throw new Error('Mensagem obrigatória.');\n\nreturn [{\n  json: {\n    student_id: String(b.student_id || ''),\n    name: String(b.name || 'Aluno'),\n    phone: String(b.phone || '').replace(/\\D/g, ''),\n    message,\n    message_type: b.message_type === 'audio' ? 'audio' : 'text',\n    is_audio: b.message_type === 'audio',\n    channel: String(b.channel || 'web'),\n    mode,\n    topic: String(b.topic || (mode === 'diagnostic' ? 'initial_diagnostic' : 'daily_life')),\n    correction_mode: String(b.correction_mode || 'balanced'),\n    conversation: {\n      style: String(b.conversation?.style || 'guided'),\n      max_turns: Math.max(4, Math.min(30, Number(b.conversation?.max_turns || 10)))\n    }\n  }\n}];"
+      },
+      "id": "4fe3405f-7c73-4f87-b617-a19d71988936",
+      "name": "Normalizar Web V11",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/n8n/context.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.message }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aeb1739d-4eac-416c-a4fb-392fe65ef9a2",
+      "name": "Buscar Contexto PHP Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -660,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "b112b403-f936-478e-b84c-c4e6170802c0",
+      "name": "Juntar Entrada + Contexto Web",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -420,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "11329552-1c13-4b24-93b2-8783d150b1e7",
+              "leftValue": "={{ $json.mode === 'diagnostic' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "79231687-c4d7-41c2-bce1-623259a712f2",
+      "name": "Modo Diagnóstico?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -170,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $json;\nconst s = j.student || {};\nconst currentStep = Math.max(0, Number(s.diagnostic_step ?? j.diagnostic_step ?? 0) || 0);\nconst message = String(j.message || '').trim();\nconst normalized = message\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .toLowerCase()\n  .trim();\n\nfunction detectChoice(value) {\n  const number = value.match(/(?:^|\\b)([1-5])(?:\\b|$)/);\n  if (number) return Number(number[1]);\n  if (value.includes('nunca') || value.includes('nao sei nada') || value.includes('zero')) return 1;\n  if (value.includes('algumas palavras') || value.includes('reconheco palavras')) return 2;\n  if (value.includes('frases simples') || value.includes('escrever frases')) return 3;\n  if (value.includes('conversar um pouco') || value.includes('converso um pouco')) return 4;\n  if (value.includes('descubra') || value.includes('durante a conversa')) return 5;\n  return null;\n}\n\nconst choices = {\n  1: {\n    level: 'PRE-A1', band: 'PRE-A1', support: 'pt_first', teaching: 'foundations', language: 'portuguese', explanation: 'pt-BR', correction: 'light',\n    reply: `Perfeito. Vamos começar do início, com calma e sem pressão.\\n\\nEm inglês, “Olá” é *Hello*.\\n\\nQual opção significa “Hello”?\\n\\n1. Olá\\n2. Obrigado\\n3. Tchau`\n  },\n  2: {\n    level: 'A1', band: 'A1 inicial', support: 'bilingual', teaching: 'guided', language: 'portuguese', explanation: 'pt-BR', correction: 'light',\n    reply: `Ótimo. Vou usar inglês bem simples e explicar em português quando precisar.\\n\\nComplete a frase:\\n\\nMy name ___ Ana.\\n\\n1. is\\n2. are\\n3. am`\n  },\n  3: {\n    level: 'A2', band: 'A1–A2', support: 'bilingual', teaching: 'guided_conversation', language: 'adaptive', explanation: 'pt-BR', correction: 'balanced',\n    reply: `Ótimo. Vamos começar com inglês simples e apoio em português quando necessário.\\n\\nPlease answer in English:\\n\\nWhat is your name and where are you from?\\n\\nVocê pode usar: “My name is ____. I am from ____.”`\n  },\n  4: {\n    level: 'B1', band: 'A2–B1', support: 'english_first', teaching: 'conversation', language: 'adaptive', explanation: 'adaptive', correction: 'balanced',\n    reply: `Ótimo. Vamos conversar em inglês, mas você pode pedir explicação em português a qualquer momento.\\n\\nTell me about your daily routine. What do you usually do in the morning?\\n\\nPlease answer in two or three sentences.`\n  },\n  5: {\n    level: 'A1', band: 'em descoberta', support: 'bilingual', teaching: 'guided_conversation', language: 'adaptive', explanation: 'adaptive', correction: 'balanced',\n    reply: `Tudo bem. Vou começar com uma pergunta simples e adaptar as próximas de acordo com suas respostas.\\n\\nWhat is your name and what do you like to do in your free time?\\n\\nVocê pode responder em inglês ou português.`\n  }\n};\n\nfunction diagnosticBase(overrides = {}) {\n  return {\n    reply: '', current_step: currentStep, next_step: Math.min(currentStep + 1, 5), complete: false,\n    self_assessment_option: s.initial_self_assessment ?? null,\n    provisional_band: '', estimated_level: s.estimated_level || s.overall_level || 'PRE-A1', confidence: Number(s.diagnostic_confidence || 0),\n    language_support: s.preferred_language_support || 'portuguese',\n    support_mode: s.support_mode || 'pt_first', teaching_mode: s.teaching_mode || 'foundations',\n    preferred_explanation_language: s.preferred_explanation_language || 'pt-BR', correction_mode: s.correction_mode || 'balanced',\n    translation_on_request: true, audio_sample_received: j.is_audio === true || j.message_type === 'audio',\n    scores: {reception:0,interaction:0,production:0,grammar:0,vocabulary:0,fluency:0,coherence:0,pronunciation:null},\n    cefr_evidence: [], strengths: [], weaknesses: [], recommendations: [], corrections: [], study_plan: {}, first_activity: {},\n    ...overrides\n  };\n}\n\nlet direct = null;\nif (currentStep === 0) {\n  direct = diagnosticBase({\n    reply: `Olá! Eu sou a Emma, sua professora de inglês. 😊\\n\\nAntes de começarmos, quero entender como posso ensinar você da melhor forma. Não se preocupe: você pode responder em português.\\n\\nQual opção mais combina com você hoje?\\n\\n1. Nunca estudei inglês ou não sei praticamente nada\\n2. Reconheço algumas palavras, mas não consigo formar frases\\n3. Consigo entender e escrever frases simples\\n4. Consigo conversar um pouco, mesmo cometendo erros\\n5. Prefiro que você descubra meu nível durante a conversa`,\n    next_step: 1, self_assessment_option: null, provisional_band: 'acolhimento', estimated_level: 'PRE-A1', confidence: 0,\n    support_mode: 'pt_first', teaching_mode: 'foundations', language_support: 'portuguese', preferred_explanation_language: 'pt-BR', correction_mode: 'light'\n  });\n} else if (currentStep === 1) {\n  const choice = detectChoice(normalized);\n  if (!choice) {\n    direct = diagnosticBase({\n      reply: `Para eu adaptar o início, responda somente com um número de 1 a 5.\\n\\n1. Nunca estudei ou não sei praticamente nada\\n2. Reconheço palavras, mas não formo frases\\n3. Entendo e escrevo frases simples\\n4. Consigo conversar um pouco\\n5. Prefiro que você descubra durante a conversa`,\n      next_step: 1, self_assessment_option: null, confidence: 0\n    });\n  } else {\n    const mode = choices[choice];\n    direct = diagnosticBase({\n      reply: mode.reply, next_step: 2, self_assessment_option: choice, provisional_band: mode.band,\n      estimated_level: mode.level, confidence: 10, support_mode: mode.support, teaching_mode: mode.teaching,\n      language_support: mode.language, preferred_explanation_language: mode.explanation, correction_mode: mode.correction\n    });\n  }\n}\n\nconst supportMode = s.support_mode || direct?.support_mode || 'pt_first';\nconst teachingMode = s.teaching_mode || direct?.teaching_mode || 'foundations';\nconst history = Array.isArray(j.recent_messages) ? j.recent_messages : [];\n\nconst diagnosticPrompt = `Você é Emma, professora e avaliadora do RS English. Conduza um diagnóstico pedagógico adaptativo alinhado ao QECR/CEFR.\n\nREGRAS INEGOCIÁVEIS\n- A primeira abordagem é em português. Nunca presuma que o aluno entende inglês.\n- Ensine enquanto avalia. Não transforme a experiência em uma prova hostil.\n- Faça apenas uma pergunta ou tarefa por vez.\n- A autoavaliação define somente a dificuldade inicial, nunca o nível final.\n- Se houver bloqueio, explique em português e reduza a dificuldade.\n- Se houver facilidade, aumente a dificuldade gradualmente.\n- Não repita perguntas já respondidas.\n- Não invente problemas de pronúncia sem áudio.\n- A classificação é uma estimativa pedagógica, não uma certificação oficial.\n\nDADOS\nNome: ${s.name || j.name || 'Aluno'}\nEtapa: ${currentStep}\nAutoavaliação: ${s.initial_self_assessment ?? 'não registrada'}\nFaixa provisória: ${s.estimated_level || 'PRE-A1'}\nModo de apoio: ${supportMode}\nModo de ensino: ${teachingMode}\nMensagem atual: ${message}\nMensagem é áudio: ${j.is_audio === true || j.message_type === 'audio'}\nHistórico recente: ${JSON.stringify(history)}\n\nPOLÍTICA DE IDIOMA\n- pt_first: explique principalmente em português e introduza inglês em pequenas doses, sempre com modelo claro.\n- bilingual: use inglês simples com apoio em português.\n- english_first: use principalmente inglês e português para correção, tradução ou bloqueio.\n- english_only: use inglês; volte ao português apenas se o aluno pedir ou demonstrar bloqueio real.\n\nETAPAS\n2: avalie a primeira amostra e proponha uma tarefa pessoal adequada ao nível.\n3: avalie produção/interação e peça uma tarefa envolvendo passado, sequência ou experiência, adaptada à faixa.\n4: avalie coerência e independência. Peça opinião/plano. Se ainda não houve áudio, convide para áudio de 20–40 segundos, permitindo texto.\n5: conclua com nível estimado, capacidades observadas, 2 pontos fortes, 2–3 prioridades, limitações, plano de 28 dias e primeira atividade.\n\nNa etapa 5, complete=true. Nas etapas 2–4, complete=false e next_step deve avançar somente uma etapa.\n\nRetorne SOMENTE JSON válido:\n{\n  \"reply\":\"\",\n  \"current_step\":${currentStep},\n  \"next_step\":${Math.min(currentStep + 1, 5)},\n  \"complete\":${currentStep >= 5},\n  \"self_assessment_option\":${s.initial_self_assessment ?? 'null'},\n  \"provisional_band\":\"\",\n  \"estimated_level\":\"${s.estimated_level || 'PRE-A1'}\",\n  \"confidence\":0,\n  \"language_support\":\"${s.preferred_language_support || 'portuguese'}\",\n  \"support_mode\":\"${supportMode}\",\n  \"teaching_mode\":\"${teachingMode}\",\n  \"preferred_explanation_language\":\"${s.preferred_explanation_language || 'pt-BR'}\",\n  \"correction_mode\":\"${s.correction_mode || 'balanced'}\",\n  \"translation_on_request\":true,\n  \"audio_sample_received\":${j.is_audio === true || j.message_type === 'audio'},\n  \"scores\":{\"reception\":0,\"interaction\":0,\"production\":0,\"grammar\":0,\"vocabulary\":0,\"fluency\":0,\"coherence\":0,\"pronunciation\":null},\n  \"cefr_evidence\":[],\"strengths\":[],\"weaknesses\":[],\"recommendations\":[],\"corrections\":[],\"study_plan\":{},\"first_activity\":{}\n}`;\n\nreturn [{json:{...j,current_step:currentStep,direct_response:Boolean(direct),direct_diagnostic:direct,diagnostic_prompt:diagnosticPrompt}}];"
+      },
+      "id": "b484075e-352a-41ea-be64-1b6982d47ebf",
+      "name": "Montar Prompt Diagnóstico Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-4o', input: $json.diagnostic_prompt } }}",
+        "options": {}
+      },
+      "id": "426106a0-f6e4-446f-8316-c1bd7adf13c2",
+      "name": "Diagnóstico IA Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        330,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $('Montar Prompt Diagnóstico Web').item.json;\nconst response = $json;\nlet text = response.output_text;\nif (!text && Array.isArray(response.output)) {\n  const parts=[];\n  for (const item of response.output) for (const c of (item.content || [])) if (typeof c.text === 'string') parts.push(c.text);\n  text=parts.join('\\n');\n}\ntext=String(text || '').replace(/^```json\\s*/i,'').replace(/^```\\s*/i,'').replace(/```$/,'').trim();\nlet diagnostic=null;\ntry { diagnostic=JSON.parse(text); } catch (_) {\n  const match=text.match(/\\{[\\s\\S]*\\}/);\n  if (match) try { diagnostic=JSON.parse(match[0]); } catch (_) {}\n}\nconst step=Math.max(2,Number(source.current_step || 2));\nconst s=source.student || {};\nfunction fallback() {\n  const support=s.support_mode || 'pt_first';\n  const pt=support==='pt_first' || support==='bilingual';\n  if (step===2) return pt\n    ? 'Muito bem. Agora me conte algo simples sobre sua rotina. Você pode escrever uma ou duas frases em inglês; eu ajudo se precisar.'\n    : 'Good. Now tell me about your daily routine in one or two sentences.';\n  if (step===3) return pt\n    ? 'Agora fale sobre ontem ou sobre o último fim de semana. Escreva duas ou três frases; pode pedir um modelo.'\n    : 'Tell me about something you did yesterday or last weekend in two or three sentences.';\n  if (step===4) return pt\n    ? 'Para completar esta etapa, conte um objetivo para os próximos meses e por que ele é importante. Pode responder por áudio ou texto.'\n    : 'Tell me one goal you have for the next few months and why it is important. You may answer by audio or text.';\n  return `Concluímos seu diagnóstico inicial.\\n\\nNível estimado pelo QECR: ${s.estimated_level || s.overall_level || 'A1'}.\\n\\nEsta é uma estimativa pedagógica e será refinada com novas interações.\\n\\nPontos fortes:\\n• participação nas atividades\\n• disposição para produzir inglês\\n\\nPrioridades:\\n• ampliar vocabulário\\n• organizar frases com mais segurança\\n• praticar conversação regularmente\\n\\nPrimeira atividade: apresente-se e fale brevemente sobre sua rotina.`;\n}\nif (!diagnostic || typeof diagnostic !== 'object') diagnostic={reply:fallback()};\nconst levels=['PRE-A1','A1','A2','B1','B2','C1','C2'];\nlet level=String(diagnostic.estimated_level || s.estimated_level || s.overall_level || 'PRE-A1').toUpperCase();\nif (!levels.includes(level)) level='PRE-A1';\nconst allowedSupport=['pt_first','bilingual','english_first','english_only'];\nconst allowedTeaching=['foundations','guided','guided_conversation','conversation','immersion'];\ndiagnostic.current_step=step;\ndiagnostic.next_step=step>=5?5:Math.min(step+1,5);\ndiagnostic.complete=step>=5;\ndiagnostic.estimated_level=level;\ndiagnostic.self_assessment_option=diagnostic.self_assessment_option ?? s.initial_self_assessment ?? null;\ndiagnostic.support_mode=allowedSupport.includes(diagnostic.support_mode)?diagnostic.support_mode:(s.support_mode || 'pt_first');\ndiagnostic.teaching_mode=allowedTeaching.includes(diagnostic.teaching_mode)?diagnostic.teaching_mode:(s.teaching_mode || 'foundations');\ndiagnostic.language_support=['portuguese','adaptive','english'].includes(diagnostic.language_support)?diagnostic.language_support:(s.preferred_language_support || 'portuguese');\ndiagnostic.preferred_explanation_language=['pt-BR','adaptive','en'].includes(diagnostic.preferred_explanation_language)?diagnostic.preferred_explanation_language:(s.preferred_explanation_language || 'pt-BR');\ndiagnostic.correction_mode=['light','balanced','intensive'].includes(diagnostic.correction_mode)?diagnostic.correction_mode:(s.correction_mode || 'balanced');\ndiagnostic.confidence=Math.max(0,Math.min(100,Number(diagnostic.confidence || 35)));\ndiagnostic.audio_sample_received=Boolean(diagnostic.audio_sample_received || source.is_audio || source.message_type==='audio');\nfor (const key of ['cefr_evidence','strengths','weaknesses','recommendations','corrections']) if (!Array.isArray(diagnostic[key])) diagnostic[key]=[];\nfor (const key of ['scores','study_plan','first_activity']) if (!diagnostic[key] || typeof diagnostic[key] !== 'object') diagnostic[key]={};\nif (!String(diagnostic.reply || '').trim()) diagnostic.reply=fallback();\nreturn [{json:{...source,diagnostic,teacher_message:String(diagnostic.reply).trim(),diagnostic_parse_ok:Boolean(text)}}];"
+      },
+      "id": "7c0b52d4-0685-4347-8d63-965ef7c88443",
+      "name": "Extrair Diagnóstico Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        570,
+        -280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "0581e500-aa44-445b-abd5-9259cc2a3368",
+      "name": "Juntar Dados + Diagnóstico Web",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        810,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/n8n/save-diagnostic.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { phone: $('Normalizar Web V11').item.json.phone, student_name: $('Normalizar Web V11').item.json.name, student_message: $('Juntar Dados + Diagnóstico Web').item.json.message, teacher_message: $('Juntar Dados + Diagnóstico Web').item.json.teacher_message, message_type: $('Normalizar Web V11').item.json.message_type, diagnostic: $('Juntar Dados + Diagnóstico Web').item.json.diagnostic } }}",
+        "options": {}
+      },
+      "id": "56218c43-e03d-402d-a387-2735257c3403",
+      "name": "Salvar Diagnóstico PHP Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Juntar Dados + Diagnóstico Web').item.json;\nreturn [{json:{teacher_message:d.teacher_message||'',diagnostic:d.diagnostic||{},evaluation:{errors:d.diagnostic?.corrections||[]}}}];"
+      },
+      "id": "6b0d3a8f-eb86-4f7e-bb86-8e9cf348e9b9",
+      "name": "Preparar Resposta Diagnóstico Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1290,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "cfc5baf3-12d6-47ac-974d-d280816923ae",
+      "name": "Responder Diagnóstico Web",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1530,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j=$json;\nconst s=j.student || {};\nconst prefs=j.student_preferences || {};\nconst level=s.overall_level || s.estimated_level || 'PRE-A1';\nconst support=s.support_mode || 'pt_first';\nconst teaching=s.teaching_mode || 'foundations';\nconst correction=prefs.correction_mode || s.correction_mode || 'balanced';\nconst message=String(j.message || '').trim();\nconst conversation=j.conversation || {topic:prefs.conversation_topic || 'daily_life',style:prefs.conversation_style || 'guided',turn_count:0,max_turns:Number(prefs.conversation_max_turns || 10)};\nconst policy={\n  pt_first:'Fale principalmente em português. Introduza apenas uma pequena parte em inglês por vez, com significado e modelo. Nunca abandone o aluno em uma conversa só em inglês.',\n  bilingual:'Use inglês simples e apoio em português. Traduza ou modele quando houver insegurança.',\n  english_first:'Use principalmente inglês. Use português para correção, explicação ou quando o aluno demonstrar bloqueio.',\n  english_only:'Use inglês como idioma principal. Volte ao português somente se o aluno pedir ou demonstrar bloqueio real.'\n}[support] || 'Adapte o idioma à compreensão do aluno.';\nconst teachingPolicy={\n  foundations:'Ensine do zero. Uma expressão ou estrutura por vez. Celebre progresso pequeno e use exemplos concretos.',\n  guided:'Faça prática guiada com modelos curtos e alternativas quando necessário.',\n  guided_conversation:'Conduza conversação simples, oferecendo modelo antes de exigir produção independente.',\n  conversation:'Mantenha conversa natural, corrija sem interromper demais e aumente a complexidade gradualmente.',\n  immersion:'Mantenha imersão, naturalidade e desafios compatíveis com o nível.'\n}[teaching] || '';\nconst teacherPrompt=`Você é Emma, professora particular de inglês do RS English.\nAluno: ${s.name || j.name || 'Aluno'}\nNível estimado: ${level}\nModo de apoio: ${support}\nModo de ensino: ${teaching}\nModo de correção: ${correction}\nTema: ${conversation.topic || 'daily_life'}\nHistórico: ${JSON.stringify(j.recent_messages || [])}\nMensagem atual: ${message}\n\nPOLÍTICA: ${policy}\nMETODOLOGIA: ${teachingPolicy}\n\nRegras:\n- acolha antes de corrigir;\n- faça somente uma pergunta por resposta;\n- não repita pergunta já respondida;\n- se o aluno disser que não entendeu, reduza a dificuldade imediatamente;\n- no modo foundations, ensine enquanto conversa;\n- light: no máximo 1 correção essencial; balanced: 1 correção relevante; intensive: até 2;\n- para áudio diga “você disse”; para texto diga “você escreveu”;\n- não informe nível ou faça novo diagnóstico agora;\n- responda somente com a mensagem que será enviada ao aluno.`;\nconst evaluatorPrompt=`Avalie a mensagem do aluno no contexto abaixo e retorne somente JSON válido.\nNível: ${level}. Apoio: ${support}. Ensino: ${teaching}. Correção: ${correction}.\nMensagem do aluno: ${message}\nResposta da professora será gerada separadamente.\nRetorne: {\"grammar_score\":null,\"vocabulary_score\":null,\"fluency_score\":null,\"comprehension_score\":null,\"corrections\":[],\"errors\":[],\"skills\":[],\"session_complete\":false,\"session_summary\":\"\",\"summary_data\":{}}.\nNão invente pronúncia sem áudio. Limite correções conforme o modo.`;\nreturn [{json:{...j,level,support_mode:support,teaching_mode:teaching,correction_mode:correction,conversation,teacher_prompt:teacherPrompt,evaluator_prompt:evaluatorPrompt}}];"
+      },
+      "id": "58d2a274-e599-4f22-8812-6073be9047b1",
+      "name": "Montar Contexto Professor Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-4o', input: $json.teacher_prompt } }}",
+        "options": {}
+      },
+      "id": "bb4fb43d-fffd-4be7-a1c2-747a6239adc0",
+      "name": "Teacher IA Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        330,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: 'gpt-4o', input: $json.evaluator_prompt } }}",
+        "options": {},
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi"
+      },
+      "id": "8d265b8f-7c62-4933-8e2d-acf3e1ecd39d",
+      "name": "Evaluator IA Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        330,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r=$json;let text=r.output_text;if(!text&&Array.isArray(r.output)){const p=[];for(const i of r.output){for(const c of(i.content??[])){if(typeof c.text==='string')p.push(c.text)}}text=p.join('\\n')}return [{json:{teacher_message:String(text??'').trim()}}];"
+      },
+      "id": "842bc183-ae69-460a-a29f-6cf85dd7ad46",
+      "name": "Extrair Teacher Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        570,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json;\n\nlet text = r.output_text;\n\nif (!text && Array.isArray(r.output)) {\n  const parts = [];\n\n  for (const item of r.output) {\n    for (const content of item.content ?? []) {\n      if (typeof content.text === 'string') {\n        parts.push(content.text);\n      }\n    }\n  }\n\n  text = parts.join('\\n');\n}\n\ntext = String(text ?? '')\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/```$/i, '')\n  .trim();\n\nlet evaluation;\n\ntry {\n  evaluation = JSON.parse(text);\n} catch (error) {\n  evaluation = {\n    grammar_score: null,\n    vocabulary_score: null,\n    fluency_score: null,\n    comprehension_score: null,\n    corrections: [],\n    errors: [],\n    skills: []\n  };\n}\n\nif (!Array.isArray(evaluation.corrections)) {\n  evaluation.corrections = [];\n}\n\nif (!Array.isArray(evaluation.errors)) {\n  evaluation.errors = [];\n}\n\nif (!Array.isArray(evaluation.skills)) {\n  evaluation.skills = [];\n}\n\nreturn [{\n  json: {\n    evaluation\n  }\n}];"
+      },
+      "id": "07eef8f2-e780-4ace-a434-a1e80e5717ce",
+      "name": "Extrair Avaliação Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        570,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "29cb1989-e413-4bcc-9579-9d998dd37327",
+      "name": "Juntar Contexto + Teacher Web",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        810,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "4e8a9483-188e-45bb-bd4b-e579749fb915",
+      "name": "Juntar Teacher + Avaliação Web",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1050,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rsenglish.rsautomacaodigital.cloud/api/n8n/save-interaction.php",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { phone: $('Normalizar Web V11').item.json.phone, student_name: $('Normalizar Web V11').item.json.name, student_message: $('Juntar Teacher + Avaliação Web').item.json.message || '', teacher_message: $('Juntar Teacher + Avaliação Web').item.json.teacher_message || '', message_type: $('Normalizar Web V11').item.json.message_type, channel: $('Normalizar Web V11').item.json.channel, mode: 'conversation', topic: $('Normalizar Web V11').item.json.topic, conversation: $('Normalizar Web V11').item.json.conversation, evaluation: $('Juntar Teacher + Avaliação Web').item.json.evaluation || {} } }}",
+        "options": {}
+      },
+      "id": "a3c219b0-7342-4725-b327-e1d3b652fb53",
+      "name": "Salvar Interação PHP Web",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1290,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $('Juntar Teacher + Avaliação Web').item.json;\nreturn [{json:{teacher_message:d.teacher_message||'',evaluation:d.evaluation||{},diagnostic:null}}];"
+      },
+      "id": "0be2341a-229b-4fcb-b620-7708fe1d770a",
+      "name": "Preparar Resposta Conversa Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1530,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "e9846ead-568a-407f-9552-f4807e974710",
+      "name": "Responder Conversa Web",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1770,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b4c0f377-72cb-4a8e-a8cd-358fad19dc04",
+              "leftValue": "={{ $json.direct_response }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "54bf25bb-8dea-4d7f-99fa-af1af0df78e4",
+      "name": "Resposta diagnóstica direta Web?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1220,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source=$json; const diagnostic=source.direct_diagnostic; if(!diagnostic) throw new Error('Resposta diagnóstica direta ausente.'); return [{json:{...source,diagnostic,teacher_message:String(diagnostic.reply||'').trim(),diagnostic_parse_ok:true}}];"
+      },
+      "id": "eadd36e6-427f-4b23-94ba-be57db7e99cf",
+      "name": "Usar diagnóstico direto Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        410
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Portal Web": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Web V11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Web V11": {
+      "main": [
+        [
+          {
+            "node": "Buscar Contexto PHP Web",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Entrada + Contexto Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Contexto PHP Web": {
+      "main": [
+        [
+          {
+            "node": "Juntar Entrada + Contexto Web",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Entrada + Contexto Web": {
+      "main": [
+        [
+          {
+            "node": "Modo Diagnóstico?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modo Diagnóstico?": {
+      "main": [
+        [
+          {
+            "node": "Montar Prompt Diagnóstico Web",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar Contexto Professor Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Prompt Diagnóstico Web": {
+      "main": [
+        [
+          {
+            "node": "Resposta diagnóstica direta Web?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Dados + Diagnóstico Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagnóstico IA Web": {
+      "main": [
+        [
+          {
+            "node": "Extrair Diagnóstico Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Diagnóstico Web": {
+      "main": [
+        [
+          {
+            "node": "Juntar Dados + Diagnóstico Web",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Dados + Diagnóstico Web": {
+      "main": [
+        [
+          {
+            "node": "Salvar Diagnóstico PHP Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Diagnóstico PHP Web": {
+      "main": [
+        [
+          {
+            "node": "Preparar Resposta Diagnóstico Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Resposta Diagnóstico Web": {
+      "main": [
+        [
+          {
+            "node": "Responder Diagnóstico Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Contexto Professor Web": {
+      "main": [
+        [
+          {
+            "node": "Teacher IA Web",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Evaluator IA Web",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Juntar Contexto + Teacher Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teacher IA Web": {
+      "main": [
+        [
+          {
+            "node": "Extrair Teacher Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Teacher Web": {
+      "main": [
+        [
+          {
+            "node": "Juntar Contexto + Teacher Web",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Contexto + Teacher Web": {
+      "main": [
+        [
+          {
+            "node": "Juntar Teacher + Avaliação Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluator IA Web": {
+      "main": [
+        [
+          {
+            "node": "Extrair Avaliação Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Avaliação Web": {
+      "main": [
+        [
+          {
+            "node": "Juntar Teacher + Avaliação Web",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Juntar Teacher + Avaliação Web": {
+      "main": [
+        [
+          {
+            "node": "Salvar Interação PHP Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Interação PHP Web": {
+      "main": [
+        [
+          {
+            "node": "Preparar Resposta Conversa Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Resposta Conversa Web": {
+      "main": [
+        [
+          {
+            "node": "Responder Conversa Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta diagnóstica direta Web?": {
+      "main": [
+        [
+          {
+            "node": "Usar diagnóstico direto Web",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Diagnóstico IA Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Usar diagnóstico direto Web": {
+      "main": [
+        [
+          {
+            "node": "Juntar Dados + Diagnóstico Web",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "344641de-a7a3-48a0-adf4-c42534fd2cc9",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

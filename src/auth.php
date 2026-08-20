@@ -118,6 +118,7 @@ function attempt_login(string $login,string $password): bool
     $login=trim($login);
 
     try {
+        $phoneLogin = preg_replace('/\D+/', '', $login) ?: '';
         $stmt=db()->prepare("
             SELECT *
             FROM app_users
@@ -125,12 +126,15 @@ function attempt_login(string $login,string $password): bool
               AND (
                   username=:login
                   OR email=:login
-                  OR phone=:login
+                  OR (
+                      :phone_login <> ''
+                      AND regexp_replace(COALESCE(phone,''),'[^0-9]','','g')=:phone_login
+                  )
               )
             LIMIT 1
         ");
 
-        $stmt->execute(['login'=>$login]);
+        $stmt->execute(['login'=>$login, 'phone_login'=>$phoneLogin]);
         $user=$stmt->fetch();
 
         if ($user && password_verify($password,$user['password_hash'])) {
@@ -138,11 +142,22 @@ function attempt_login(string $login,string $password): bool
             $_SESSION['user_id']=$user['id'];
             unset($_SESSION['legacy_admin']);
 
-            db()->prepare("
-                UPDATE app_users
-                SET last_login_at=NOW()
-                WHERE id=:id
-            ")->execute(['id'=>$user['id']]);
+            try {
+                db()->prepare("
+                    UPDATE app_users
+                    SET
+                        last_login_at=NOW(),
+                        first_access_at=COALESCE(first_access_at,NOW())
+                    WHERE id=:id
+                ")->execute(['id'=>$user['id']]);
+            } catch (Throwable $ignored) {
+                db()->prepare("UPDATE app_users SET last_login_at=NOW() WHERE id=:id")
+                    ->execute(['id'=>$user['id']]);
+            }
+
+            if (function_exists('record_login_attempt')) {
+                record_login_attempt($login, true);
+            }
 
             return true;
         }
@@ -166,7 +181,39 @@ function attempt_login(string $login,string $password): bool
         return true;
     }
 
+    if (function_exists('record_login_attempt')) {
+        record_login_attempt($login, false);
+    }
+
     return false;
+}
+
+function account_requires_activation(string $login): bool
+{
+    $login = trim($login);
+    if ($login === '') return false;
+
+    try {
+        $phoneLogin = preg_replace('/\D+/', '', $login) ?: '';
+        $stmt = db()->prepare("
+            SELECT 1
+            FROM app_users
+            WHERE status='pending_activation'
+              AND (
+                  username=:login
+                  OR email=:login
+                  OR (
+                      :phone_login <> ''
+                      AND regexp_replace(COALESCE(phone,''),'[^0-9]','','g') = :phone_login
+                  )
+              )
+            LIMIT 1
+        ");
+        $stmt->execute(['login' => $login, 'phone_login' => $phoneLogin]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
 }
 
 function logout_user(): void

@@ -20,7 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location:'.post_login_redirect());
         exit;
     } else {
-        $error = 'Usuário ou senha inválidos.';
+        $error = account_requires_activation($login)
+            ? 'Seu acesso ainda precisa ser ativado. Solicite um novo link à Emma enviando a palavra ACESSO no WhatsApp.'
+            : 'Usuário ou senha inválidos.';
     }
 }
 ?>
@@ -33,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="color-scheme" content="light">
 <title>Entrar — RS English</title>
 <link rel="icon" href="/assets/images/rs-english-mark-transparent.png" type="image/png">
-<link rel="stylesheet" href="/assets/css/app.css?v=11.0">
+<link rel="stylesheet" href="/assets/css/app.css?v=12.0">
 </head>
 <body class="login-body">
 <div class="login-page login-page-redesign">
@@ -123,6 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="login-divider"><span>ou</span></div>
 
             <div class="login-forgot">
+                <a href="/first-access.php">Primeiro acesso</a>
+                <span aria-hidden="true"> · </span>
                 <a href="/forgot-password.php">Esqueci minha senha</a>
             </div>
         </form>

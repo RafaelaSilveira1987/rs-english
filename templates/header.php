@@ -41,7 +41,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 <meta name="color-scheme" content="light">
 <title><?= e($pageTitle) ?> — RS English</title>
 <link rel="icon" href="/assets/images/rs-english-mark-transparent.png" type="image/png">
-<link rel="stylesheet" href="/assets/css/app.css?v=11.0">
+<link rel="stylesheet" href="/assets/css/app.css?v=12.0">
 </head>
 <body class="role-<?= e((string)$role) ?>">
 <div class="sidebar-overlay" data-sidebar-overlay></div>
@@ -90,6 +90,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
             <div class="nav-section">Administração</div>
             <nav>
                 <?php nav_item('/admin/users.php', 'Usuários', 'users', ['/admin/users.php']); ?>
+                <?php nav_item('/admin/accesses.php', 'Acessos dos alunos', 'password', ['/admin/accesses.php']); ?>
                 <?php nav_item('/admin/teacher-settings.php', 'Professor IA', 'bot', ['/admin/teacher-settings.php']); ?>
                 <?php nav_item('/admin/system-health.php', 'Saúde do sistema', 'health', ['/admin/system-health.php']); ?>
             </nav>

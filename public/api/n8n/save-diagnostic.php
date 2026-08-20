@@ -73,6 +73,44 @@ if (!in_array($languageSupport, ['portuguese', 'adaptive', 'english'], true)) {
     $languageSupport = 'adaptive';
 }
 
+$selfAssessment = isset($diagnostic['self_assessment_option'])
+    ? (int)$diagnostic['self_assessment_option']
+    : null;
+if ($selfAssessment !== null && ($selfAssessment < 1 || $selfAssessment > 5)) {
+    $selfAssessment = null;
+}
+
+$supportMode = strtolower(trim((string)($diagnostic['support_mode'] ?? '')));
+$teachingMode = strtolower(trim((string)($diagnostic['teaching_mode'] ?? '')));
+$preferredExplanationLanguage = trim((string)($diagnostic['preferred_explanation_language'] ?? ''));
+$diagnosticConfidence = max(0, min(100, (float)($diagnostic['confidence'] ?? $diagnostic['confidence_score'] ?? 0)));
+
+$modeDefaults = [
+    1 => ['pt_first', 'foundations', 'pt-BR', 'portuguese', 'light'],
+    2 => ['bilingual', 'guided', 'pt-BR', 'portuguese', 'light'],
+    3 => ['bilingual', 'guided_conversation', 'pt-BR', 'adaptive', 'balanced'],
+    4 => ['english_first', 'conversation', 'adaptive', 'adaptive', 'balanced'],
+    5 => ['bilingual', 'guided_conversation', 'adaptive', 'adaptive', 'balanced'],
+];
+$defaultMode = $modeDefaults[$selfAssessment ?? 0] ?? ['pt_first', 'foundations', 'pt-BR', 'portuguese', 'balanced'];
+
+if (!in_array($supportMode, ['pt_first', 'bilingual', 'english_first', 'english_only'], true)) {
+    $supportMode = $defaultMode[0];
+}
+if (!in_array($teachingMode, ['foundations', 'guided', 'guided_conversation', 'conversation', 'immersion'], true)) {
+    $teachingMode = $defaultMode[1];
+}
+if (!in_array($preferredExplanationLanguage, ['pt-BR', 'adaptive', 'en'], true)) {
+    $preferredExplanationLanguage = $defaultMode[2];
+}
+if (!isset($diagnostic['language_support'])) {
+    $languageSupport = $defaultMode[3];
+}
+$correctionMode = strtolower(trim((string)($diagnostic['correction_mode'] ?? $defaultMode[4])));
+if (!in_array($correctionMode, ['light', 'balanced', 'intensive'], true)) {
+    $correctionMode = $defaultMode[4];
+}
+
 $scores = is_array($diagnostic['scores'] ?? null) ? $diagnostic['scores'] : [];
 $strengths = is_array($diagnostic['strengths'] ?? null) ? $diagnostic['strengths'] : [];
 $weaknesses = is_array($diagnostic['weaknesses'] ?? null) ? $diagnostic['weaknesses'] : [];
@@ -161,6 +199,11 @@ try {
                 diagnostic_step,
                 diagnostic_started_at,
                 preferred_language_support,
+                support_mode,
+                teaching_mode,
+                preferred_explanation_language,
+                diagnostic_confidence,
+                initial_self_assessment,
                 pre_a1
             )
             VALUES (
@@ -168,17 +211,28 @@ try {
                 'PRE-A1',
                 'PRE-A1',
                 'Aprender inglês',
-                'balanced',
+                :correction_mode,
                 'in_progress',
                 0,
                 NOW(),
                 :language_support,
+                :support_mode,
+                :teaching_mode,
+                :preferred_explanation_language,
+                :diagnostic_confidence,
+                CAST(:self_assessment AS integer),
                 CAST(:pre_a1 AS boolean)
             )
         ");
         $query->execute([
             'student_id' => $studentId,
+            'correction_mode' => $correctionMode,
             'language_support' => $languageSupport,
+            'support_mode' => $supportMode,
+            'teaching_mode' => $teachingMode,
+            'preferred_explanation_language' => $preferredExplanationLanguage,
+            'diagnostic_confidence' => $diagnosticConfidence,
+            'self_assessment' => $selfAssessment,
             'pre_a1' => 'true',
         ]);
     }
@@ -371,6 +425,12 @@ try {
                 diagnostic_step = :step,
                 estimated_level = :level,
                 preferred_language_support = :language_support,
+                support_mode = :support_mode,
+                teaching_mode = :teaching_mode,
+                preferred_explanation_language = :preferred_explanation_language,
+                diagnostic_confidence = :diagnostic_confidence,
+                initial_self_assessment = COALESCE(CAST(:self_assessment AS integer), initial_self_assessment),
+                correction_mode = :correction_mode,
                 pre_a1 = CAST(:pre_a1 AS boolean),
                 diagnostic_started_at = COALESCE(diagnostic_started_at, NOW()),
                 last_study_at = NOW(),
@@ -381,9 +441,36 @@ try {
             'step' => $nextStep,
             'level' => $level,
             'language_support' => $languageSupport,
+            'support_mode' => $supportMode,
+            'teaching_mode' => $teachingMode,
+            'preferred_explanation_language' => $preferredExplanationLanguage,
+            'diagnostic_confidence' => $diagnosticConfidence,
+            'self_assessment' => $selfAssessment,
+            'correction_mode' => $correctionMode,
             'pre_a1' => $preA1DatabaseValue,
             'student_id' => $studentId,
         ]);
+
+        diagnostic_optional_step(
+            $pdo,
+            'sp_diagnostic_preferences',
+            'preferências adaptativas não foram sincronizadas',
+            static function () use ($pdo, $studentId, $correctionMode, $languageSupport): void {
+                $pdo->prepare("
+                    INSERT INTO student_preferences(student_id, correction_mode, explanations_language)
+                    VALUES(:student_id, :correction_mode, :explanations_language)
+                    ON CONFLICT(student_id) DO UPDATE SET
+                        correction_mode = EXCLUDED.correction_mode,
+                        explanations_language = EXCLUDED.explanations_language,
+                        updated_at = NOW()
+                ")->execute([
+                    'student_id' => $studentId,
+                    'correction_mode' => $correctionMode,
+                    'explanations_language' => $languageSupport,
+                ]);
+            },
+            $warnings
+        );
 
         $pdo->commit();
 
@@ -394,6 +481,9 @@ try {
             'session_id' => $sessionId,
             'next_step' => $nextStep,
             'estimated_level' => $level,
+            'support_mode' => $supportMode,
+            'teaching_mode' => $teachingMode,
+            'self_assessment_option' => $selfAssessment,
             'warnings' => $warnings,
         ], 201);
     }
@@ -423,6 +513,13 @@ try {
             diagnostic_step = :step,
             diagnostic_completed_at = NOW(),
             preferred_language_support = :language_support,
+            support_mode = :support_mode,
+            teaching_mode = :teaching_mode,
+            preferred_explanation_language = :preferred_explanation_language,
+            diagnostic_confidence = :diagnostic_confidence,
+            initial_self_assessment = COALESCE(CAST(:self_assessment AS integer), initial_self_assessment),
+            correction_mode = :correction_mode,
+            onboarding_completed_at = COALESCE(onboarding_completed_at, NOW()),
             pre_a1 = CAST(:pre_a1 AS boolean),
             grammar_score = :grammar,
             vocabulary_score = :vocabulary,
@@ -440,6 +537,12 @@ try {
         'level' => $level,
         'step' => $nextStep,
         'language_support' => $languageSupport,
+        'support_mode' => $supportMode,
+        'teaching_mode' => $teachingMode,
+        'preferred_explanation_language' => $preferredExplanationLanguage,
+        'diagnostic_confidence' => $diagnosticConfidence,
+        'self_assessment' => $selfAssessment,
+        'correction_mode' => $correctionMode,
         'pre_a1' => $preA1DatabaseValue,
         'grammar' => $grammar,
         'vocabulary' => $vocabulary,
@@ -695,6 +798,27 @@ try {
         $warnings
     );
 
+    diagnostic_optional_step(
+        $pdo,
+        'sp_completed_preferences',
+        'preferências finais não foram sincronizadas',
+        static function () use ($pdo, $studentId, $correctionMode, $languageSupport): void {
+            $pdo->prepare("
+                INSERT INTO student_preferences(student_id, correction_mode, explanations_language)
+                VALUES(:student_id, :correction_mode, :explanations_language)
+                ON CONFLICT(student_id) DO UPDATE SET
+                    correction_mode = EXCLUDED.correction_mode,
+                    explanations_language = EXCLUDED.explanations_language,
+                    updated_at = NOW()
+            ")->execute([
+                'student_id' => $studentId,
+                'correction_mode' => $correctionMode,
+                'explanations_language' => $languageSupport,
+            ]);
+        },
+        $warnings
+    );
+
     $stage = 'completing_diagnostic_session';
 
     $query = $pdo->prepare("
@@ -727,6 +851,9 @@ try {
         'session_id' => $sessionId,
         'official_level' => $level,
         'target_level' => $targetLevel,
+        'support_mode' => $supportMode,
+        'teaching_mode' => $teachingMode,
+        'self_assessment_option' => $selfAssessment,
         'warnings' => $warnings,
     ], 201);
 } catch (Throwable $exception) {
