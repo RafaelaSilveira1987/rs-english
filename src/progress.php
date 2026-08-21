@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/portal.php';
+require_once __DIR__ . '/learning.php';
 
 function progress_clamp(mixed $value): float
 {
@@ -31,11 +32,19 @@ function progress_skill_values(array $profile): array
     ];
 }
 
-function progress_skill_average(array $skills): float
+function progress_skill_average(array $skills, array $skillEvidence = []): float
 {
-    // Só entram competências já medidas (>0). Evita transformar campos ainda não avaliados em nota zero.
-    $measured = array_values(array_filter($skills, static fn($score) => (float)$score > 0));
-    if (!$measured) return 0.0;
+    // Na v15, uma nota 0 pode ser uma medição real. A evidência define se a
+    // competência foi medida; para instalações sem a migration 033, mantemos
+    // o comportamento anterior como fallback.
+    $measured = [];
+    foreach ($skills as $skill => $score) {
+        $hasEvidence = (int)($skillEvidence[$skill]['evidence_count'] ?? 0) > 0;
+        if ($hasEvidence || ($skillEvidence === [] && (float)$score > 0)) {
+            $measured[] = (float)$score;
+        }
+    }
+    if ($measured === []) return 0.0;
     return round(array_sum($measured) / count($measured), 2);
 }
 
@@ -159,10 +168,29 @@ function progress_week_data(PDO $pdo, string $studentId): array
     $wordStmt->execute(['student_id' => $studentId, 'week_start' => $start, 'week_end' => $end]);
     $newWords = (int)$wordStmt->fetchColumn();
 
+    $eventMinutesStmt = $pdo->prepare(<<<'SQL'
+        SELECT COALESCE(SUM(duration_seconds), 0) / 60.0
+        FROM student_learning_events
+        WHERE student_id = :student_id
+          AND occurred_at::date BETWEEN :week_start AND :week_end
+    SQL);
+    $eventMinutesStmt->execute([
+        'student_id' => $studentId,
+        'week_start' => $start,
+        'week_end' => $end,
+    ]);
+    $eventMinutes = (float)($eventMinutesStmt->fetchColumn() ?: 0);
+
+    // A telemetria da v15 é a fonte principal. Os dados antigos servem apenas
+    // como fallback quando ainda não existe evento mensurável na semana.
     $derivedMinutes = (int)round((float)$activity['minutes'] + $voiceMinutes);
-    $completedMinutes = max((int)$saved['completed_minutes'], $derivedMinutes);
-    $completedActivities = max((int)$saved['completed_activities'], (int)$activity['completed']);
-    $learnedWords = max((int)$saved['learned_words'], $newWords);
+    $completedMinutes = $eventMinutes > 0
+        ? (int)round($eventMinutes)
+        : max((int)$saved['completed_minutes'], $derivedMinutes);
+    $completedActivities = (int)$activity['completed'] > 0
+        ? (int)$activity['completed']
+        : (int)$saved['completed_activities'];
+    $learnedWords = $newWords > 0 ? $newWords : (int)$saved['learned_words'];
 
     $targetMinutes = max(1, (int)$saved['target_minutes']);
     $targetActivities = max(1, (int)$saved['target_activities']);
@@ -204,9 +232,9 @@ function progress_sync_weekly_goal(PDO $pdo, string $studentId, array $week): vo
         )
         ON CONFLICT(student_id, week_start)
         DO UPDATE SET
-            completed_minutes = GREATEST(weekly_goals.completed_minutes, EXCLUDED.completed_minutes),
-            completed_activities = GREATEST(weekly_goals.completed_activities, EXCLUDED.completed_activities),
-            learned_words = GREATEST(weekly_goals.learned_words, EXCLUDED.learned_words),
+            completed_minutes = EXCLUDED.completed_minutes,
+            completed_activities = EXCLUDED.completed_activities,
+            learned_words = EXCLUDED.learned_words,
             updated_at = NOW()
     SQL);
     $stmt->execute([
@@ -226,8 +254,10 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
     if (!$profile) return [];
 
     $skills = progress_skill_values($profile);
-    $skillAverage = progress_skill_average($skills);
+    $skillEvidence = learning_skill_summary($pdo, $studentId);
+    $skillAverage = progress_skill_average($skills, $skillEvidence);
     $week = progress_week_data($pdo, $studentId);
+    $learningTotals = learning_event_totals($pdo, $studentId);
 
     $stmt = $pdo->prepare(<<<'SQL'
         SELECT
@@ -250,6 +280,9 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
             (SELECT COUNT(*) FROM student_errors WHERE student_id = :student_id) AS corrections_total,
             (SELECT COUNT(*) FROM student_errors WHERE student_id = :student_id AND status = 'learning') AS corrections_open,
             (SELECT COUNT(*) FROM student_errors WHERE student_id = :student_id AND status = 'learning' AND (next_review_at IS NULL OR next_review_at <= NOW())) AS corrections_due,
+            (SELECT COUNT(*) FROM student_errors WHERE student_id = :student_id AND status = 'learning' AND COALESCE(occurrences,1) >= 2) AS corrections_recurring,
+            (SELECT COUNT(*) FROM student_errors WHERE student_id = :student_id AND (status <> 'learning' OR resolved_at IS NOT NULL)) AS corrections_resolved,
+            (SELECT COUNT(*) FROM student_skill_evidence WHERE student_id = :student_id) AS skill_evidence_count,
             (SELECT COUNT(*) FROM student_achievements WHERE student_id = :student_id) AS achievements_total,
             (SELECT COUNT(*) FROM weekly_reports WHERE student_id = :student_id) AS reports_total,
             (SELECT COUNT(*) FROM diagnostic_reports WHERE student_id = :student_id) AS diagnostics_total,
@@ -281,7 +314,8 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
 
     $correctionsTotal = (int)($agg['corrections_total'] ?? 0);
     $correctionsOpen = (int)($agg['corrections_open'] ?? 0);
-    $correctionsResolvedRate = $correctionsTotal > 0 ? round((($correctionsTotal - $correctionsOpen) / $correctionsTotal) * 100, 1) : 0.0;
+    $correctionsResolved = (int)($agg['corrections_resolved'] ?? max(0, $correctionsTotal - $correctionsOpen));
+    $correctionsResolvedRate = $correctionsTotal > 0 ? round(($correctionsResolved / $correctionsTotal) * 100, 1) : 0.0;
 
     $daysSince = null;
     if ($lastActivity) {
@@ -291,7 +325,11 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
 
     $metrics = array_merge($profile, $agg, [
         'skills' => $skills,
-        'skills_measured' => count(array_filter($skills, static fn($v) => $v > 0)),
+        'skill_evidence' => $skillEvidence,
+        'skills_measured' => count(array_filter(
+            $skillEvidence,
+            static fn(array $item): bool => (int)($item['evidence_count'] ?? 0) > 0
+        )),
         'skill_average' => $skillAverage,
         'week' => $week,
         'streak_days_real' => $streak,
@@ -300,9 +338,19 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
         'engagement_status' => $engagementStatus,
         'activity_completion_rate' => $activityCompletionRate,
         'vocabulary_mastery_rate' => $vocabularyMasteryRate,
+        'corrections_resolved' => $correctionsResolved,
         'corrections_resolved_rate' => $correctionsResolvedRate,
+        'study_minutes_total' => (int)round(((int)($learningTotals['duration_seconds_total'] ?? 0)) / 60),
+        'study_minutes_7d' => (int)round(((int)($learningTotals['duration_seconds_7d'] ?? 0)) / 60),
+        'study_minutes_30d' => (int)round(((int)($learningTotals['duration_seconds_30d'] ?? 0)) / 60),
+        'active_days_30d' => (int)($learningTotals['active_days_30d'] ?? 0),
+        'learning_events_total' => (int)($learningTotals['events_total'] ?? 0),
+        'learning_events_30d' => (int)($learningTotals['events_30d'] ?? 0),
         'pending_total' => (int)($agg['activities_pending'] ?? 0) + (int)($agg['vocabulary_due'] ?? 0) + (int)($agg['corrections_due'] ?? 0),
     ]);
+
+    $metrics['recommendation'] = learning_recommendation($metrics);
+    $metrics['attention_reasons'] = learning_attention_reasons($metrics);
 
     if ($sync) {
         progress_sync_weekly_goal($pdo, $studentId, $week);
@@ -310,6 +358,7 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
             UPDATE student_profiles
             SET streak_days = :streak_days,
                 last_study_at = COALESCE(:last_activity_at, last_study_at),
+                progress_updated_at = NOW(),
                 updated_at = NOW()
             WHERE student_id = :student_id
         SQL)->execute([
@@ -339,7 +388,9 @@ function progress_capture_snapshot(array $metrics): void
             activities_completed, activity_average_score,
             vocabulary_total, vocabulary_mastered, vocabulary_mastery_average,
             corrections_open, weekly_minutes, weekly_activities, weekly_words,
-            weekly_goal_percent, last_activity_at
+            weekly_goal_percent, last_activity_at, active_days_30d,
+            study_minutes_total, recurring_errors, corrections_resolved_rate,
+            skill_evidence_count
         ) VALUES(
             :student_id, CURRENT_DATE, :overall_level, :skill_average,
             :grammar_score, :vocabulary_score, :speaking_score, :listening_score,
@@ -348,7 +399,9 @@ function progress_capture_snapshot(array $metrics): void
             :activities_completed, :activity_average_score,
             :vocabulary_total, :vocabulary_mastered, :vocabulary_mastery_average,
             :corrections_open, :weekly_minutes, :weekly_activities, :weekly_words,
-            :weekly_goal_percent, :last_activity_at
+            :weekly_goal_percent, :last_activity_at, :active_days_30d,
+            :study_minutes_total, :recurring_errors, :corrections_resolved_rate,
+            :skill_evidence_count
         )
         ON CONFLICT(student_id, snapshot_date)
         DO UPDATE SET
@@ -378,6 +431,11 @@ function progress_capture_snapshot(array $metrics): void
             weekly_words = EXCLUDED.weekly_words,
             weekly_goal_percent = EXCLUDED.weekly_goal_percent,
             last_activity_at = EXCLUDED.last_activity_at,
+            active_days_30d = EXCLUDED.active_days_30d,
+            study_minutes_total = EXCLUDED.study_minutes_total,
+            recurring_errors = EXCLUDED.recurring_errors,
+            corrections_resolved_rate = EXCLUDED.corrections_resolved_rate,
+            skill_evidence_count = EXCLUDED.skill_evidence_count,
             updated_at = NOW()
     SQL);
 
@@ -409,6 +467,11 @@ function progress_capture_snapshot(array $metrics): void
         'weekly_words' => (int)($week['learned_words'] ?? 0),
         'weekly_goal_percent' => (float)($week['goal_percent'] ?? 0),
         'last_activity_at' => $metrics['last_activity_at'] ?? null,
+        'active_days_30d' => (int)($metrics['active_days_30d'] ?? 0),
+        'study_minutes_total' => (int)($metrics['study_minutes_total'] ?? 0),
+        'recurring_errors' => (int)($metrics['corrections_recurring'] ?? 0),
+        'corrections_resolved_rate' => (float)($metrics['corrections_resolved_rate'] ?? 0),
+        'skill_evidence_count' => (int)($metrics['skill_evidence_count'] ?? 0),
     ]);
 }
 
@@ -417,7 +480,11 @@ function progress_snapshot_history(string $studentId, int $days = 30): array
     $days = max(7, min(365, $days));
     $stmt = db()->prepare(<<<SQL
         SELECT snapshot_date, overall_level, skill_average, xp, streak_days,
-               activities_completed, vocabulary_mastered, weekly_goal_percent
+               activities_completed, vocabulary_mastered, weekly_goal_percent,
+               grammar_score, vocabulary_score, speaking_score, listening_score,
+               reading_score, writing_score, fluency_score, pronunciation_score,
+               active_days_30d, study_minutes_total, recurring_errors,
+               corrections_resolved_rate, skill_evidence_count
         FROM student_progress_snapshots
         WHERE student_id = :student_id
           AND snapshot_date >= CURRENT_DATE - INTERVAL '{$days} days'
@@ -493,12 +560,27 @@ function progress_admin_summary(?array $rows = null): array
     $activityTotal = 0;
     $sessions7 = 0;
     $wordsMastered = 0;
+    $active30 = 0;
+    $studyMinutes = 0;
+    $recurringErrors = 0;
+    $attentionHigh = 0;
+    $attentionMedium = 0;
     $levels = ['PRE-A1'=>0,'A1'=>0,'A2'=>0,'B1'=>0,'B2'=>0,'C1'=>0,'C2'=>0];
 
     foreach ($rows as $row) {
         $days = $row['days_since_activity'];
         if ($days !== null && $days <= 7) $active7++;
-        if (in_array($row['engagement_status'], ['attention','inactive','not_started'], true)) $attention++;
+        if ($days !== null && $days <= 30) $active30++;
+        $reasons = $row['attention_reasons'] ?? [];
+        if ($reasons !== []) {
+            $attention++;
+            $severities = array_column($reasons, 'severity');
+            if (in_array('high', $severities, true)) {
+                $attentionHigh++;
+            } elseif (in_array('medium', $severities, true)) {
+                $attentionMedium++;
+            }
+        }
         if (($row['diagnostic_status'] ?? '') === 'completed') $diagnosticCompleted++;
         if (($row['skills_measured'] ?? 0) > 0) {
             $skillSum += (float)$row['skill_average'];
@@ -509,6 +591,8 @@ function progress_admin_summary(?array $rows = null): array
         $activityTotal += (int)($row['activities_total'] ?? 0);
         $sessions7 += (int)($row['sessions_7d'] ?? 0);
         $wordsMastered += (int)($row['vocabulary_mastered'] ?? 0);
+        $studyMinutes += (int)($row['study_minutes_total'] ?? 0);
+        $recurringErrors += (int)($row['corrections_recurring'] ?? 0);
         $level = strtoupper((string)($row['overall_level'] ?? 'PRE-A1'));
         if (!array_key_exists($level, $levels)) $levels[$level] = 0;
         $levels[$level]++;
@@ -518,7 +602,11 @@ function progress_admin_summary(?array $rows = null): array
         'students_total' => $total,
         'active_7d' => $active7,
         'active_7d_percent' => $total ? round(($active7 / $total) * 100, 1) : 0,
+        'active_30d' => $active30,
+        'active_30d_percent' => $total ? round(($active30 / $total) * 100, 1) : 0,
         'needs_attention' => $attention,
+        'attention_high' => $attentionHigh,
+        'attention_medium' => $attentionMedium,
         'diagnostic_completed' => $diagnosticCompleted,
         'diagnostic_completion_percent' => $total ? round(($diagnosticCompleted / $total) * 100, 1) : 0,
         'skill_average' => $skillCount ? round($skillSum / $skillCount, 1) : 0,
@@ -526,6 +614,8 @@ function progress_admin_summary(?array $rows = null): array
         'activity_completion_percent' => $activityTotal ? round(($activityCompleted / $activityTotal) * 100, 1) : 0,
         'sessions_7d' => $sessions7,
         'words_mastered' => $wordsMastered,
+        'study_minutes_total' => $studyMinutes,
+        'recurring_errors' => $recurringErrors,
         'levels' => $levels,
     ];
 }

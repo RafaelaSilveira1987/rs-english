@@ -707,3 +707,41 @@ body:not(.login-body)>.login-page .login-box{width:min(500px,100%)}
 .skill-card small{display:block;margin-top:6px;color:var(--muted);font-size:11px}
 @media(max-width:1100px){.progress-filter{grid-template-columns:1fr 1fr}.progress-filter button{width:100%}.progress-card-stats{grid-template-columns:1fr 1fr}}
 @media(max-width:680px){.progress-filter{grid-template-columns:1fr}.progress-card-stats{grid-template-columns:1fr 1fr}.level-distribution-row{grid-template-columns:64px 1fr 28px}}
+
+/* v15 — telemetria pedagógica e recomendações reais */
+.section-gap-sm{margin-top:14px;margin-bottom:18px}
+.recommendation-card{
+    display:grid;
+    grid-template-columns:auto minmax(0,1fr) auto;
+    align-items:center;
+    gap:18px;
+    padding:20px;
+    border:1px solid rgba(7,88,255,.16);
+    border-radius:18px;
+    background:linear-gradient(135deg,#f3f8ff,#fbf5ff);
+    box-shadow:var(--shadow-xs);
+}
+.recommendation-card.priority-high{border-color:rgba(239,68,68,.22);background:linear-gradient(135deg,#fff6f5,#f8f4ff)}
+.recommendation-card.priority-medium{border-color:rgba(7,88,255,.18)}
+.recommendation-icon{width:52px;height:52px;display:grid;place-items:center;border-radius:16px;color:#fff;background:var(--gradient);box-shadow:0 12px 28px rgba(61,82,220,.20)}
+.recommendation-icon svg{width:25px;height:25px}
+.recommendation-copy{min-width:0}
+.recommendation-copy>span{display:block;color:var(--blue);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.1em}
+.recommendation-copy h2{margin:5px 0 6px;font-size:18px;line-height:1.25}
+.recommendation-copy p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.recommendation-copy small{display:block;margin-top:7px;color:#52617c;font-size:10px;font-weight:750}
+.evidence-meta{display:block;margin-top:6px;color:var(--muted);font-size:10px;line-height:1.4}
+.attention-summary{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:17px 20px;border:1px solid #f6d9a9;border-radius:16px;background:#fffaf0}
+.attention-summary h3{margin:7px 0 4px;font-size:15px}.attention-summary p{margin:0;color:var(--muted);font-size:11px}
+.attention-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.attention-card{display:flex;flex-direction:column;gap:12px;padding:17px;border:1px solid var(--border);border-left:4px solid #f0ad2c;border-radius:15px;background:#fff}
+.attention-card.severity-high{border-left-color:#d9363e;background:#fffafa}.attention-card.severity-medium{border-left-color:#f0ad2c}.attention-card.severity-low{border-left-color:#4b82f4}
+.attention-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.attention-card-head>div{display:grid;gap:4px}.attention-card-head strong{font-size:13px}.attention-card-head span:not(.badge){color:var(--muted);font-size:10px}
+.attention-card ul{display:grid;gap:6px;margin:0;padding-left:18px;color:#46536d;font-size:11px;line-height:1.45}.attention-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}.attention-card .btn{align-self:flex-start;margin-top:auto}
+.filter-check{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 12px;border:1px solid var(--border);border-radius:12px;background:#fff;color:#43506a;font-size:11px;font-weight:750;white-space:nowrap}
+.filter-check input{width:16px;height:16px;margin:0}
+.attention-label{max-width:210px;margin-top:5px;color:#a45b00;line-height:1.35}
+.attention-text{display:block;max-width:220px;font-size:11px;line-height:1.35}.attention-text.severity-high{color:#b42318}.attention-text.severity-medium{color:#a45b00}.attention-text.severity-low{color:#245fcb}
+
+@media(max-width:1180px){.attention-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.recommendation-card{grid-template-columns:auto 1fr}.recommendation-card>.btn,.recommendation-card>.badge{grid-column:2;justify-self:start}}
+@media(max-width:760px){.recommendation-card{grid-template-columns:1fr;align-items:flex-start}.recommendation-card>.btn,.recommendation-card>.badge{grid-column:auto}.attention-grid{grid-template-columns:1fr}.attention-summary{align-items:flex-start;flex-direction:column}.filter-check{width:100%}}

@@ -1,0 +1,83 @@
+{
+  "name": "RS English v15 - Snapshot diário de progresso",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "10 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "6b41472e-876c-49e6-a9df-a5dd8874f5ab",
+      "name": "Todos os dias 02:10",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.RS_ENGLISH_API_URL || 'https://rsenglish.rsautomacaodigital.cloud') + '/api/n8n/refresh-progress.php' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.N8N_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ active_only: true, limit: 1000 }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "1dd50b70-6193-45b6-8fcb-54b4075f733f",
+      "name": "Atualizar snapshots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Todos os dias 02:10": {
+      "main": [
+        [
+          {
+            "node": "Atualizar snapshots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "versionId": "d18ae166-eedb-4aa6-b25d-4b585f51bb16",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

@@ -18,8 +18,13 @@ usort($rows, static function(array $a, array $b): int {
 });
 $recent = array_slice($rows, 0, 10);
 
-$attention = array_values(array_filter($rows, static fn($row) => in_array($row['engagement_status'], ['attention','inactive','not_started'], true)));
-usort($attention, static function(array $a,array $b): int {
+$attention = array_values(array_filter($rows, static fn($row) => ($row['attention_reasons'] ?? []) !== []));
+$severityRank = ['high' => 0, 'medium' => 1, 'low' => 2];
+usort($attention, static function(array $a,array $b) use ($severityRank): int {
+    $aReason = $a['attention_reasons'][0] ?? ['severity' => 'low'];
+    $bReason = $b['attention_reasons'][0] ?? ['severity' => 'low'];
+    $rank = ($severityRank[$aReason['severity']] ?? 9) <=> ($severityRank[$bReason['severity']] ?? 9);
+    if ($rank !== 0) return $rank;
     $aDays = $a['days_since_activity'] ?? 99999;
     $bDays = $b['days_since_activity'] ?? 99999;
     return $bDays <=> $aDays;
@@ -42,17 +47,17 @@ require __DIR__ . '/../templates/header.php';
 </section>
 
 <section class="cards cards-4">
-    <article class="card metric-card"><a class="metric-link" href="/students.php"></a><div><div class="label">Alunos ativos</div><div class="metric"><?= (int)$summary['students_total'] ?></div><div class="metric-sub"><?= (int)$summary['active_7d'] ?> com atividade em 7 dias</div></div><div class="metric-icon"><?=ui_icon('students')?></div></article>
+    <article class="card metric-card"><a class="metric-link" href="/students.php"></a><div><div class="label">Alunos cadastrados</div><div class="metric"><?= (int)$summary['students_total'] ?></div><div class="metric-sub"><?= (int)$summary['active_7d'] ?> em 7 dias · <?= (int)$summary['active_30d'] ?> em 30 dias</div></div><div class="metric-icon"><?=ui_icon('students')?></div></article>
     <article class="card metric-card"><div><div class="label">Média de competências</div><div class="metric"><?= number_format((float)$summary['skill_average'],0) ?>%</div><div class="metric-sub">Somente habilidades efetivamente avaliadas</div></div><div class="metric-icon"><?=ui_icon('progress')?></div></article>
     <article class="card metric-card"><div><div class="label">Meta semanal média</div><div class="metric"><?= number_format((float)$summary['weekly_goal_average'],0) ?>%</div><div class="metric-sub">Progresso atual da base</div></div><div class="metric-icon"><?=ui_icon('target')?></div></article>
-    <article class="card metric-card"><a class="metric-link" href="/admin/progress.php?status=inactive"></a><div><div class="label">Precisam de atenção</div><div class="metric"><?= (int)$summary['needs_attention'] ?></div><div class="metric-sub">Inativos, em atenção ou sem início</div></div><div class="metric-icon"><?=ui_icon('health')?></div></article>
+    <article class="card metric-card"><a class="metric-link" href="/admin/progress.php?attention=1"></a><div><div class="label">Precisam de atenção</div><div class="metric"><?= (int)$summary['needs_attention'] ?></div><div class="metric-sub"><?= (int)$summary['attention_high'] ?> prioritários · <?= (int)$summary['recurring_errors'] ?> erros recorrentes</div></div><div class="metric-icon"><?=ui_icon('health')?></div></article>
 </section>
 
 <section class="cards cards-4">
     <article class="card metric-card"><div><div class="label">Diagnóstico concluído</div><div class="metric"><?= number_format((float)$summary['diagnostic_completion_percent'],0) ?>%</div><div class="metric-sub"><?= (int)$summary['diagnostic_completed'] ?> aluno(s) classificados</div></div><div class="metric-icon"><?=ui_icon('diagnostic')?></div></article>
     <article class="card metric-card"><div><div class="label">Conclusão de atividades</div><div class="metric"><?= number_format((float)$summary['activity_completion_percent'],0) ?>%</div><div class="metric-sub">Taxa real das atividades atribuídas</div></div><div class="metric-icon"><?=ui_icon('activities')?></div></article>
     <article class="card metric-card"><div><div class="label">Sessões em 7 dias</div><div class="metric"><?= (int)$summary['sessions_7d'] ?></div><div class="metric-sub">Conversações e avaliações</div></div><div class="metric-icon"><?=ui_icon('practice')?></div></article>
-    <article class="card metric-card"><div><div class="label">Palavras dominadas</div><div class="metric"><?= (int)$summary['words_mastered'] ?></div><div class="metric-sub">Somatório real da base</div></div><div class="metric-icon"><?=ui_icon('vocabulary')?></div></article>
+    <article class="card metric-card"><div><div class="label">Tempo de estudo</div><div class="metric"><?=number_format(((int)$summary['study_minutes_total'])/60,1,',','.')?>h</div><div class="metric-sub"><?= (int)$summary['words_mastered'] ?> palavras dominadas na base</div></div><div class="metric-icon"><?=ui_icon('history')?></div></article>
 </section>
 
 <div class="grid-2 section-gap">
@@ -64,9 +69,9 @@ require __DIR__ . '/../templates/header.php';
     </section>
 
     <section class="panel">
-        <div class="panel-head"><div><h2>Alunos para acompanhar</h2><p>Prioridade baseada na ausência real de atividade.</p></div><a class="btn btn-secondary btn-sm" href="/admin/progress.php">Analisar base</a></div>
+        <div class="panel-head"><div><h2>Alunos para acompanhar</h2><p>Prioridade baseada em frequência, diagnóstico, pendências e erros recorrentes.</p></div><a class="btn btn-secondary btn-sm" href="/admin/progress.php?attention=1">Analisar base</a></div>
         <?php if(!$attention):?><div class="empty-state compact"><h3>Nenhum alerta de frequência</h3><p>Todos os alunos estão com atividade recente.</p></div><?php else:?><div class="stack">
-            <?php foreach($attention as $student):?><a class="list-card" href="/student.php?id=<?=e((string)$student['id'])?>"><div class="list-row"><div class="list-main"><strong><?=e((string)$student['name'])?></strong><p><?= $student['days_since_activity']===null?'Ainda não iniciou':((int)$student['days_since_activity'].' dia(s) sem atividade') ?></p></div><span class="badge <?=e(progress_engagement_class((string)$student['engagement_status']))?>"><?=e(progress_engagement_label((string)$student['engagement_status']))?></span></div><div class="list-meta"><span><?=e((string)$student['overall_level'])?></span><span><?=number_format((float)$student['week']['goal_percent'],0)?>% da meta semanal</span><span><?= (int)$student['pending_total']?> pendência(s)</span></div></a><?php endforeach;?>
+            <?php foreach($attention as $student):$reason=$student['attention_reasons'][0]??null;?><a class="list-card" href="/student.php?id=<?=e((string)$student['id'])?>"><div class="list-row"><div class="list-main"><strong><?=e((string)$student['name'])?></strong><p><?=e((string)($reason['label']??'Revisar acompanhamento'))?></p></div><span class="badge <?=e(progress_engagement_class((string)$student['engagement_status']))?>"><?=e((string)$student['overall_level'])?></span></div><div class="list-meta"><span><?=number_format((float)$student['week']['goal_percent'],0)?>% da meta</span><span><?= (int)$student['study_minutes_30d']?> min em 30d</span><span><?= (int)$student['corrections_recurring']?> erro(s) recorrente(s)</span></div></a><?php endforeach;?>
         </div><?php endif;?>
     </section>
 </div>

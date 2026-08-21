@@ -5,6 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../../src/db.php';
 require_once __DIR__ . '/../../../src/api.php';
 require_once __DIR__ . '/../../../src/conversation.php';
+require_once __DIR__ . '/../../../src/learning.php';
+require_once __DIR__ . '/../../../src/progress.php';
 
 require_n8n_key();
 
@@ -128,7 +130,26 @@ try {
 
     $sessionId = $query->fetchColumn();
 
+    learning_record_event(
+        $pdo,
+        (string)$studentId,
+        learning_event_key('conversation-started', [(string)$sessionId]),
+        'conversation_started',
+        $channel !== '' ? $channel : 'whatsapp',
+        (string)$sessionId,
+        (string)$sessionId,
+        0,
+        null,
+        0,
+        [
+            'topic' => $topic,
+            'style' => $style,
+            'max_turns' => $maxTurns,
+        ]
+    );
+
     $pdo->commit();
+    progress_refresh_after_event((string)$studentId);
 
     json_response([
         'success' => true,

@@ -50,10 +50,11 @@ require __DIR__.'/../templates/header.php';
         <button class="btn btn-primary">Filtrar</button>
     </form>
 
-    <?php if(!$rows):?><div class="empty-state"><div class="empty-state-icon"><?=ui_icon('students')?></div><h3>Nenhum aluno encontrado</h3><p>Ajuste os filtros para localizar outro cadastro.</p></div><?php else:?><div class="table-wrap"><table><thead><tr><th>Aluno</th><th>Situação</th><th>Nível</th><th>Competências</th><th>Semana</th><th>Atividades</th><th>Vocabulário</th><th>Pendências</th><th>Última atividade</th></tr></thead><tbody>
-    <?php foreach($rows as $student):?><tr>
+    <?php if(!$rows):?><div class="empty-state"><div class="empty-state-icon"><?=ui_icon('students')?></div><h3>Nenhum aluno encontrado</h3><p>Ajuste os filtros para localizar outro cadastro.</p></div><?php else:?><div class="table-wrap"><table><thead><tr><th>Aluno</th><th>Situação</th><th>Prioridade</th><th>Nível</th><th>Competências</th><th>Semana</th><th>Atividades</th><th>Vocabulário</th><th>Pendências</th><th>Última atividade</th></tr></thead><tbody>
+    <?php foreach($rows as $student):$reason=$student['attention_reasons'][0]??null;$recommendation=$student['recommendation']??[];?><tr>
         <td><a class="table-link" href="/student.php?id=<?=e((string)$student['id'])?>"><strong><?=e((string)$student['name'])?></strong><div class="label"><?=e((string)($student['phone']?:$student['email']?:'Sem contato'))?></div></a></td>
         <td><span class="badge <?=e(progress_engagement_class((string)$student['engagement_status']))?>"><?=e(progress_engagement_label((string)$student['engagement_status']))?></span></td>
+        <td><?php if($reason):?><strong class="attention-text severity-<?=e((string)$reason['severity'])?>"><?=e((string)$reason['label'])?></strong><div class="label"><?=e((string)($recommendation['title']??'Revisar acompanhamento'))?></div><?php else:?><span class="badge success">Sem alerta</span><?php endif;?></td>
         <td><span class="badge <?=e(ui_level_class((string)$student['overall_level']))?>"><?=e((string)$student['overall_level'])?></span><div class="label"><?=e(ui_status_label((string)$student['diagnostic_status']))?></div></td>
         <td><strong><?=number_format((float)$student['skill_average'],0)?>%</strong><div class="label"><?= (int)$student['skills_measured']?>/8 medidas</div></td>
         <td><strong><?=number_format((float)$student['week']['goal_percent'],0)?>%</strong><div class="progress slim"><span data-progress="<?= (float)$student['week']['goal_percent']?>"></span></div></td>

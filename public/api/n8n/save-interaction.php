@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../../src/db.php';
 require_once __DIR__ . '/../../../src/api.php';
 require_once __DIR__ . '/../../../src/conversation.php';
 require_once __DIR__ . '/../../../src/progress.php';
+require_once __DIR__ . '/../../../src/learning.php';
 
 require_n8n_key();
 
@@ -331,97 +332,20 @@ try {
         ]);
     }
 
-    foreach (($evaluation['errors'] ?? []) as $error) {
-        if (!is_array($error)) {
-            continue;
-        }
-
-        $key = canonical_key_v104($error);
-
-        $query = $pdo->prepare("
-            SELECT id
-            FROM student_errors
-            WHERE student_id = :student_id
-              AND canonical_key = :canonical_key
-              AND status = 'learning'
-            LIMIT 1
-        ");
-        $query->execute([
-            'student_id' => $studentId,
-            'canonical_key' => $key,
-        ]);
-        $existing = $query->fetchColumn();
-
-        if ($existing) {
-            $pdo->prepare("
-                UPDATE student_errors
-                SET
-                    category = COALESCE(:category, category),
-                    topic = COALESCE(:topic, topic),
-                    original_text = COALESCE(:original, original_text),
-                    corrected_text = COALESCE(:corrected, corrected_text),
-                    explanation = COALESCE(:explanation, explanation),
-                    severity = COALESCE(:severity, severity),
-                    occurrences = occurrences + 1,
-                    mastery_score = GREATEST(0, mastery_score - 5),
-                    next_review_at = NOW() + INTERVAL '1 day'
-                WHERE id = :error_id
-            ")->execute([
-                'category' => $error['category'] ?? null,
-                'topic' => $error['topic'] ?? null,
-                'original' => $error['original'] ?? null,
-                'corrected' => $error['corrected'] ?? null,
-                'explanation' => $error['explanation'] ?? null,
-                'severity' => $error['severity'] ?? 'medium',
-                'error_id' => $existing,
-            ]);
-        } else {
-            $pdo->prepare("
-                INSERT INTO student_errors(
-                    student_id,
-                    session_id,
-                    message_id,
-                    category,
-                    topic,
-                    canonical_key,
-                    original_text,
-                    corrected_text,
-                    explanation,
-                    severity,
-                    occurrences,
-                    mastery_score,
-                    status,
-                    next_review_at
-                )
-                VALUES(
-                    :student_id,
-                    :session_id,
-                    :message_id,
-                    :category,
-                    :topic,
-                    :canonical_key,
-                    :original,
-                    :corrected,
-                    :explanation,
-                    :severity,
-                    1,
-                    0,
-                    'learning',
-                    NOW() + INTERVAL '1 day'
-                )
-            ")->execute([
-                'student_id' => $studentId,
-                'session_id' => $sessionId,
-                'message_id' => $messageId,
-                'category' => $error['category'] ?? null,
-                'topic' => $error['topic'] ?? null,
-                'canonical_key' => $key,
-                'original' => $error['original'] ?? null,
-                'corrected' => $error['corrected'] ?? null,
-                'explanation' => $error['explanation'] ?? null,
-                'severity' => $error['severity'] ?? 'medium',
-            ]);
-        }
+    $correctionPayload = $evaluation['corrections'] ?? $evaluation['errors'] ?? [];
+    $correctionsSaved = 0;
+    if (is_array($correctionPayload) && $correctionPayload !== []) {
+        $correctionsSaved = learning_sync_corrections(
+            $pdo,
+            (string)$studentId,
+            $correctionPayload,
+            [
+                'channel' => (string)($data['channel'] ?? 'whatsapp'),
+                'session_id' => (string)$sessionId,
+                'message_id' => (string)$messageId,
+                'event_prefix' => learning_event_key('interaction-correction', [(string)$messageId]),
+            ]
+        );
     }
 
     foreach (($evaluation['vocabulary'] ?? []) as $vocabulary) {
@@ -630,6 +554,58 @@ try {
         'student_id' => $studentId,
     ]);
 
+    $recordedSkills = learning_record_evaluation(
+        $pdo,
+        (string)$studentId,
+        $evaluation,
+        [
+            'source' => $mode === 'assessment' ? 'diagnostic_interaction' : 'teacher_interaction',
+            'event_prefix' => learning_event_key('interaction-skill', [(string)$messageId]),
+            'session_id' => (string)$sessionId,
+            'source_id' => (string)$messageId,
+            'message_type' => $messageType,
+            'weight' => $mode === 'assessment' ? 1.5 : 1.0,
+            'confidence' => $evaluation['confidence_score'] ?? $evaluation['confidence'] ?? null,
+            'evidence_text' => $studentMessage,
+            'evidence_data' => [
+                'channel' => (string)($data['channel'] ?? 'whatsapp'),
+                'mode' => $mode,
+                'topic' => $topic,
+            ],
+        ]
+    );
+
+    $eventScore = $recordedSkills !== []
+        ? round(array_sum($recordedSkills) / count($recordedSkills), 2)
+        : null;
+    $eventXp = $mode === 'review' ? 8 : 5;
+    $audioDurationSeconds = max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0)));
+    $eventChannel = trim((string)($data['channel'] ?? 'whatsapp')) ?: 'whatsapp';
+
+    learning_record_event(
+        $pdo,
+        (string)$studentId,
+        learning_event_key('interaction', [(string)$messageId]),
+        $mode === 'assessment' ? 'diagnostic_interaction' : 'conversation_turn',
+        $eventChannel,
+        (string)$sessionId,
+        (string)$messageId,
+        $audioDurationSeconds,
+        $eventScore,
+        $eventXp,
+        [
+            'message_type' => $messageType,
+            'mode' => $mode,
+            'topic' => $topic,
+            'teacher_replied' => $teacherMessage !== '',
+            'skills_recorded' => array_keys($recordedSkills),
+            'corrections_saved' => $correctionsSaved,
+            'vocabulary_count' => is_array($evaluation['vocabulary'] ?? null)
+                ? count($evaluation['vocabulary'])
+                : 0,
+        ]
+    );
+
     $shouldFinish = $mode === 'conversation'
         && ($sessionEnd || $newTurnCount >= $sessionMaxTurns);
 
@@ -666,6 +642,11 @@ try {
         'student_id' => $studentId,
         'session_id' => $sessionId,
         'mode' => $mode,
+        'telemetry' => [
+            'skills_recorded' => array_keys($recordedSkills),
+            'corrections_saved' => $correctionsSaved,
+            'event_score' => $eventScore,
+        ],
         'conversation' => $mode === 'conversation'
             ? [
                 'topic' => $topic,

@@ -1,0 +1,44 @@
+RS ENGLISH V15 - INTEGRAÇÃO COMPLETA DE PROGRESSO
+
+NOVOS ARQUIVOS
+- database/033_learning_telemetry.sql
+- src/learning.php
+- public/api/n8n/refresh-progress.php
+- docs/fluxos/rs-english-n8n-v15-snapshot-diario.json
+- docs/INSTALL-V15-INTEGRACAO-PROGRESSO.md
+
+ENDPOINTS ATUALIZADOS
+- public/api/n8n/save-interaction.php
+- public/api/n8n/save-diagnostic.php
+- public/api/n8n/save-diagnostic-feedback.php
+- public/api/n8n/save-corrections.php
+- public/api/n8n/start-conversation.php
+- public/api/n8n/end-conversation.php
+- public/api/n8n/complete-activity.php
+- public/api/web/activity-submit.php
+- public/api/web/voice.php
+- public/api/voice/pronunciation-practice.php
+
+PAINÉIS ATUALIZADOS
+- public/portal/index.php
+- public/portal/progress.php
+- public/index.php
+- public/admin/progress.php
+- public/students.php
+- public/student.php
+
+CAMADA CENTRAL
+- src/progress.php
+- src/portal.php
+- public/assets/css/app.css
+
+PRINCIPAIS RESULTADOS
+- mesmo cálculo no painel do aluno e no admin;
+- evidências por competência;
+- eventos reais de aprendizagem;
+- tempo de estudo mensurável;
+- erros recorrentes consolidados;
+- recomendações automáticas da Emma;
+- alertas pedagógicos para o admin;
+- snapshot diário de progresso;
+- idempotência para eventos e correções repetidas pelo n8n.

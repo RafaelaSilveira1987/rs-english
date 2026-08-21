@@ -54,6 +54,8 @@ function portal_profile(string $studentId): array
             COALESCE(sp.xp, 0) AS xp,
             COALESCE(sp.streak_days, 0) AS streak_days,
             sp.last_study_at,
+            sp.last_skill_evaluation_at,
+            sp.progress_updated_at,
             COALESCE(pref.daily_minutes, 20) AS daily_minutes,
             COALESCE(pref.weekly_days, 5) AS weekly_days,
             COALESCE(pref.focus_mode, 'conversation') AS focus_mode,

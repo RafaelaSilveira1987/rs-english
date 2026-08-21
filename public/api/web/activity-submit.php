@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../../src/auth.php';
 require_once __DIR__ . '/../../../src/portal.php';
 require_once __DIR__ . '/../../../src/config.php';
 require_once __DIR__ . '/../../../src/progress.php';
+require_once __DIR__ . '/../../../src/learning.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -13,6 +14,9 @@ $user = require_student();
 $payload = json_decode(file_get_contents('php://input') ?: '{}', true) ?: [];
 $studentActivityId = trim((string)($payload['student_activity_id'] ?? ''));
 $answer = trim((string)($payload['answer'] ?? ''));
+$durationSeconds = max(0, (int)round((float)($payload['duration_seconds'] ?? 0)));
+$correctAnswers = isset($payload['correct_answers']) && is_numeric($payload['correct_answers']) ? max(0, (int)$payload['correct_answers']) : null;
+$totalQuestions = isset($payload['total_questions']) && is_numeric($payload['total_questions']) ? max(0, (int)$payload['total_questions']) : null;
 
 if ($studentActivityId === '' || $answer === '') {
     http_response_code(422);
@@ -132,11 +136,14 @@ try {
     $attempt = $pdo->prepare(<<<'SQL'
         INSERT INTO activity_attempts(
             student_id, student_activity_id, attempt_number,
-            answer_text, answer_data, score, feedback, evaluation_data
+            answer_text, answer_data, score, feedback, evaluation_data,
+            skill_code, difficulty, duration_seconds,
+            correct_answers, total_questions, source
         ) VALUES(
             :student_id, :student_activity_id, :attempt_number,
             :answer_text, CAST(:answer_data AS jsonb), :score, :feedback,
-            CAST(:evaluation_data AS jsonb)
+            CAST(:evaluation_data AS jsonb), :skill_code, :difficulty,
+            :duration_seconds, :correct_answers, :total_questions, 'web'
         )
         RETURNING id
     SQL);
@@ -149,6 +156,11 @@ try {
         'score' => $score,
         'feedback' => $feedback,
         'evaluation_data' => json_encode($evaluation, JSON_UNESCAPED_UNICODE),
+        'skill_code' => learning_normalize_skill((string)$activity['skill']),
+        'difficulty' => (string)$activity['level'],
+        'duration_seconds' => $durationSeconds > 0 ? $durationSeconds : max(0, (int)$activity['estimated_minutes'] * 60),
+        'correct_answers' => $correctAnswers,
+        'total_questions' => $totalQuestions,
     ]);
     $attemptId = $attempt->fetchColumn();
 
@@ -203,6 +215,76 @@ try {
         'minutes' => (int)$activity['estimated_minutes'],
     ]);
 
+    $effectiveDuration = $durationSeconds > 0
+        ? $durationSeconds
+        : max(0, (int)$activity['estimated_minutes'] * 60);
+
+    $skillEvaluation = $evaluation;
+    if (learning_extract_skill_scores($skillEvaluation) === []) {
+        $activitySkill = learning_normalize_skill((string)$activity['skill']);
+        if ($activitySkill !== null) {
+            $skillEvaluation[$activitySkill . '_score'] = $score;
+        }
+    }
+
+    $recordedSkills = learning_record_evaluation(
+        $pdo,
+        (string)$user['student_id'],
+        $skillEvaluation,
+        [
+            'source' => 'activity',
+            'event_prefix' => learning_event_key('activity-skill', [(string)$attemptId]),
+            'source_id' => (string)$attemptId,
+            'student_activity_id' => $studentActivityId,
+            'message_type' => 'text',
+            'weight' => 2.0,
+            'confidence' => $evaluation['confidence_score'] ?? null,
+            'evidence_text' => $answer,
+            'evidence_data' => [
+                'activity_title' => $activity['title'],
+                'activity_level' => $activity['level'],
+                'correct_answers' => $correctAnswers,
+                'total_questions' => $totalQuestions,
+            ],
+        ]
+    );
+
+    $evaluationCorrections = $evaluation['corrections'] ?? $evaluation['errors'] ?? [];
+    $correctionsSaved = is_array($evaluationCorrections)
+        ? learning_sync_corrections(
+            $pdo,
+            (string)$user['student_id'],
+            $evaluationCorrections,
+            [
+                'channel' => 'web_activity',
+                'event_prefix' => learning_event_key('activity-correction', [(string)$attemptId]),
+            ]
+        )
+        : 0;
+
+    learning_record_event(
+        $pdo,
+        (string)$user['student_id'],
+        learning_event_key('activity', [$studentActivityId]),
+        'activity_completed',
+        'web',
+        null,
+        $studentActivityId,
+        $effectiveDuration,
+        $score,
+        $xp,
+        [
+            'attempt_id' => $attemptId,
+            'title' => $activity['title'],
+            'skill' => $activity['skill'],
+            'level' => $activity['level'],
+            'skills_recorded' => array_keys($recordedSkills),
+            'corrections_saved' => $correctionsSaved,
+            'correct_answers' => $correctAnswers,
+            'total_questions' => $totalQuestions,
+        ]
+    );
+
     portal_record_event(
         (string)$user['student_id'],
         'activity',
@@ -220,6 +302,8 @@ try {
         'score' => round((float)$score),
         'feedback' => $feedback,
         'xp_earned' => $xp,
+        'skills_recorded' => array_keys($recordedSkills),
+        'corrections_saved' => $correctionsSaved,
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

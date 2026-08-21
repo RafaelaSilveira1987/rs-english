@@ -25,6 +25,8 @@ $achievementsStmt->execute(['id'=>$studentId]);
 $achievements = $achievementsStmt->fetchAll();
 
 $maxEvents = max(1, ...array_map(static fn($d)=>(int)$d['sessions']+(int)$d['activities']+(int)$d['messages'], $days));
+$recommendation = $m['recommendation'] ?? [];
+
 $skillLabels = [
     'grammar'=>'Gramática','vocabulary'=>'Vocabulário','speaking'=>'Fala','listening'=>'Compreensão oral',
     'reading'=>'Leitura','writing'=>'Escrita','fluency'=>'Fluência','pronunciation'=>'Pronúncia'
@@ -51,6 +53,14 @@ require __DIR__ . '/../../templates/header.php';
     </div>
     <div class="hero-stat"><strong><?= number_format((float)$m['skill_average'],0) ?>%</strong><span>média das <?= (int)$m['skills_measured'] ?> competências já medidas</span></div>
 </section>
+
+<?php if ($recommendation): ?>
+<section class="recommendation-card priority-<?= e((string)($recommendation['priority'] ?? 'medium')) ?> section-gap-sm">
+    <div class="recommendation-icon"><?= ui_icon('teacher') ?></div>
+    <div class="recommendation-copy"><span>Próximo passo recomendado</span><h2><?= e((string)($recommendation['title'] ?? 'Continue praticando')) ?></h2><p><?= e((string)($recommendation['description'] ?? 'Uma prática curta ajuda a manter sua evolução.')) ?></p></div>
+    <a class="btn btn-primary btn-sm" href="<?= e((string)($recommendation['action_url'] ?? '/portal/practice.php')) ?>"><?= e((string)($recommendation['action_label'] ?? 'Começar prática')) ?></a>
+</section>
+<?php endif; ?>
 
 <section class="cards cards-4">
     <article class="card metric-card"><div><div class="label">Sequência real</div><div class="metric"><?= (int)$m['streak_days_real'] ?></div><div class="metric-sub">dias consecutivos com atividade</div></div><div class="metric-icon"><?= ui_icon('streak') ?></div></article>
@@ -83,10 +93,21 @@ require __DIR__ . '/../../templates/header.php';
 <section class="panel section-gap">
     <div class="panel-head"><div><h2>Competências atuais</h2><p>Campos ainda não avaliados aparecem como “Ainda não medida”, em vez de serem tratados como zero.</p></div><?php if ($skillTrend !== null): ?><span class="badge <?= $skillTrend >= 0 ? 'success':'warning' ?>"><?= $skillTrend >= 0 ? '+':'' ?><?= number_format($skillTrend,1) ?> pts desde o primeiro snapshot</span><?php endif; ?></div>
     <div class="skills-grid">
-        <?php foreach ($skillLabels as $key=>$label): $score=(float)$m['skills'][$key]; ?>
-            <div class="skill-card"><div class="skill-card-score"><strong><?= $score > 0 ? number_format($score,0) : '—' ?></strong><span><?= $score > 0 ? '%' : '' ?></span></div><div><h3><?= e($label) ?></h3><div class="progress"><span data-progress="<?= $score ?>"></span></div><small><?= $score > 0 ? 'Resultado medido':'Ainda não medida' ?></small></div></div>
+        <?php foreach ($skillLabels as $key=>$label):
+            $score=(float)$m['skills'][$key];
+            $evidence=$m['skill_evidence'][$key] ?? [];
+            $isMeasured=(int)($evidence['evidence_count'] ?? 0) > 0;
+        ?>
+            <div class="skill-card"><div class="skill-card-score"><strong><?= $isMeasured ? number_format($score,0) : '—' ?></strong><span><?= $isMeasured ? '%' : '' ?></span></div><div><h3><?= e($label) ?></h3><div class="progress"><span data-progress="<?= $isMeasured ? $score : 0 ?>"></span></div><small><?= $isMeasured ? (int)$evidence['evidence_count'].' evidência(s) · '.e(ui_relative_date($evidence['last_observed_at'] ?? null)) : 'Ainda não medida' ?></small></div></div>
         <?php endforeach; ?>
     </div>
+</section>
+
+<section class="cards cards-4 section-gap">
+    <article class="card metric-card"><div><div class="label">Tempo de estudo total</div><div class="metric"><?= (int)$m['study_minutes_total'] ?></div><div class="metric-sub"><?= (int)$m['study_minutes_30d'] ?> min nos últimos 30 dias</div></div><div class="metric-icon"><?= ui_icon('history') ?></div></article>
+    <article class="card metric-card"><div><div class="label">Dias ativos em 30 dias</div><div class="metric"><?= (int)$m['active_days_30d'] ?></div><div class="metric-sub"><?= (int)$m['learning_events_30d'] ?> eventos de aprendizagem</div></div><div class="metric-icon"><?= ui_icon('streak') ?></div></article>
+    <article class="card metric-card"><div><div class="label">Evidências pedagógicas</div><div class="metric"><?= (int)$m['skill_evidence_count'] ?></div><div class="metric-sub">medições usadas para calcular suas competências</div></div><div class="metric-icon"><?= ui_icon('progress') ?></div></article>
+    <article class="card metric-card"><div><div class="label">Erros recorrentes</div><div class="metric"><?= (int)$m['corrections_recurring'] ?></div><div class="metric-sub"><?= number_format((float)$m['corrections_resolved_rate'],0) ?>% das correções resolvidas</div></div><div class="metric-icon"><?= ui_icon('corrections') ?></div></article>
 </section>
 
 <section class="cards cards-4 section-gap">

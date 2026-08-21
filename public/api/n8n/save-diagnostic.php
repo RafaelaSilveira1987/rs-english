@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../../src/db.php';
 require_once __DIR__ . '/../../../src/api.php';
 require_once __DIR__ . '/../../../src/progress.php';
+require_once __DIR__ . '/../../../src/learning.php';
 
 require_n8n_key();
 
@@ -343,76 +344,20 @@ try {
         ]);
     }
 
+    $diagnosticCorrectionsSaved = 0;
     if ($corrections !== []) {
-        diagnostic_optional_step(
+        $diagnosticCorrectionsSaved = learning_sync_corrections(
             $pdo,
-            'sp_diagnostic_corrections',
-            'correções do diagnóstico não foram registradas',
-            static function () use (
-                $pdo,
-                $corrections,
-                $studentId,
-                $sessionId,
-                $messageType
-            ): void {
-                $insertCorrection = $pdo->prepare("
-                    INSERT INTO correction_events (
-                        student_id,
-                        session_id,
-                        channel,
-                        correction_type,
-                        original_text,
-                        corrected_text,
-                        explanation,
-                        target_word,
-                        detected_word,
-                        confidence_score,
-                        accepted
-                    )
-                    VALUES (
-                        :student_id,
-                        :session_id,
-                        :channel,
-                        :correction_type,
-                        :original_text,
-                        :corrected_text,
-                        :explanation,
-                        :target_word,
-                        :detected_word,
-                        :confidence_score,
-                        CAST(:accepted AS boolean)
-                    )
-                ");
-
-                foreach (array_slice($corrections, 0, 5) as $correction) {
-                    if (!is_array($correction)) {
-                        continue;
-                    }
-
-                    $insertCorrection->execute([
-                        'student_id' => $studentId,
-                        'session_id' => $sessionId,
-                        'channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
-                        'correction_type' => (string)(
-                            $correction['correction_type']
-                            ?? ($messageType === 'audio' ? 'spoken_transcript' : 'written')
-                        ),
-                        'original_text' => $correction['original_text'] ?? null,
-                        'corrected_text' => $correction['corrected_text'] ?? null,
-                        'explanation' => $correction['explanation'] ?? null,
-                        'target_word' => $correction['target_word'] ?? null,
-                        'detected_word' => $correction['detected_word'] ?? null,
-                        'confidence_score' => isset($correction['confidence_score'])
-                            ? max(0, min(100, (float)$correction['confidence_score']))
-                            : null,
-                        'accepted' => array_key_exists('accepted', $correction)
-                            && $correction['accepted'] === false
-                                ? 'false'
-                                : 'true',
-                    ]);
-                }
-            },
-            $warnings
+            (string)$studentId,
+            $corrections,
+            [
+                'channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+                'session_id' => (string)$sessionId,
+                'event_prefix' => learning_event_key('diagnostic-correction', [
+                    (string)$sessionId,
+                    (string)$nextStep,
+                ]),
+            ]
         );
     }
 
@@ -473,6 +418,52 @@ try {
             $warnings
         );
 
+        $partialSkills = learning_record_evaluation(
+            $pdo,
+            (string)$studentId,
+            [
+                'scores' => $scores,
+                'confidence_score' => $diagnosticConfidence,
+            ],
+            [
+                'source' => 'diagnostic_step',
+                'event_prefix' => learning_event_key('diagnostic-step-skill', [
+                    (string)$sessionId,
+                    (string)$nextStep,
+                ]),
+                'session_id' => (string)$sessionId,
+                'message_type' => $messageType,
+                'weight' => 1.5,
+                'confidence' => $diagnosticConfidence,
+                'evidence_text' => $studentMessage,
+                'evidence_data' => [
+                    'step' => $nextStep,
+                    'estimated_level' => $level,
+                ],
+            ]
+        );
+
+        learning_record_event(
+            $pdo,
+            (string)$studentId,
+            learning_event_key('diagnostic-step', [(string)$sessionId, (string)$nextStep]),
+            'diagnostic_step',
+            $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+            (string)$sessionId,
+            null,
+            max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0))),
+            $partialSkills !== [] ? round(array_sum($partialSkills) / count($partialSkills), 2) : null,
+            2,
+            [
+                'step' => $nextStep,
+                'estimated_level' => $level,
+                'support_mode' => $supportMode,
+                'teaching_mode' => $teachingMode,
+                'skills_recorded' => array_keys($partialSkills),
+                'corrections_saved' => $diagnosticCorrectionsSaved,
+            ]
+        );
+
         $pdo->commit();
 
         json_response([
@@ -485,6 +476,10 @@ try {
             'support_mode' => $supportMode,
             'teaching_mode' => $teachingMode,
             'self_assessment_option' => $selfAssessment,
+            'telemetry' => [
+                'skills_recorded' => array_keys($partialSkills),
+                'corrections_saved' => $diagnosticCorrectionsSaved,
+            ],
             'warnings' => $warnings,
         ], 201);
     }
@@ -820,6 +815,59 @@ try {
         $warnings
     );
 
+    $finalSkillPayload = [
+        'grammar_score' => $grammar,
+        'vocabulary_score' => $vocabulary,
+        'speaking_score' => $speaking,
+        'listening_score' => $listening,
+        'reading_score' => $reading,
+        'writing_score' => $writing,
+        'fluency_score' => $fluency,
+        'pronunciation_score' => $pronunciation,
+        'confidence_score' => $diagnosticConfidence,
+    ];
+
+    $finalSkills = learning_record_evaluation(
+        $pdo,
+        (string)$studentId,
+        $finalSkillPayload,
+        [
+            'source' => 'diagnostic_final',
+            'event_prefix' => learning_event_key('diagnostic-final-skill', [(string)$sessionId]),
+            'session_id' => (string)$sessionId,
+            'message_type' => $messageType,
+            'weight' => 5.0,
+            'confidence' => $diagnosticConfidence,
+            'evidence_text' => $studentMessage,
+            'evidence_data' => [
+                'official_level' => $level,
+                'support_mode' => $supportMode,
+                'teaching_mode' => $teachingMode,
+                'cefr_evidence' => $diagnostic['cefr_evidence'] ?? [],
+            ],
+        ]
+    );
+
+    learning_record_event(
+        $pdo,
+        (string)$studentId,
+        learning_event_key('diagnostic-completed', [(string)$sessionId]),
+        'diagnostic_completed',
+        $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+        (string)$sessionId,
+        null,
+        max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0))),
+        $total,
+        25,
+        [
+            'official_level' => $level,
+            'target_level' => $targetLevel,
+            'confidence' => $diagnosticConfidence,
+            'skills_recorded' => array_keys($finalSkills),
+            'corrections_saved' => $diagnosticCorrectionsSaved,
+        ]
+    );
+
     $stage = 'completing_diagnostic_session';
 
     $query = $pdo->prepare("
@@ -856,6 +904,11 @@ try {
         'support_mode' => $supportMode,
         'teaching_mode' => $teachingMode,
         'self_assessment_option' => $selfAssessment,
+        'telemetry' => [
+            'skills_recorded' => array_keys($finalSkills),
+            'corrections_saved' => $diagnosticCorrectionsSaved,
+            'event_score' => $total,
+        ],
         'warnings' => $warnings,
     ], 201);
 } catch (Throwable $exception) {

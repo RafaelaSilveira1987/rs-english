@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__.'/../../../src/auth.php';
 require_once __DIR__.'/../../../src/audio.php';
 require_once __DIR__.'/../../../src/progress.php';
+require_once __DIR__.'/../../../src/learning.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -124,11 +125,34 @@ try{
         'teacher_voice'=>$speech['voice']
     ]);
 
+    $conversationId=(string)$stmt->fetchColumn();
+
+    learning_record_event(
+        $pdo,
+        (string)$user['student_id'],
+        learning_event_key('voice',[$conversationId]),
+        'voice_practice',
+        'web_voice',
+        isset($teacher['session_id'])?(string)$teacher['session_id']:null,
+        $conversationId,
+        0,
+        null,
+        0,
+        [
+            'message_type'=>'audio',
+            'mode'=>$mode,
+            'topic'=>$topic,
+            'transcription_length'=>mb_strlen((string)$transcription['text']),
+            'media_duration_seconds'=>max(0,(int)round($duration)),
+            'duration_recorded_by'=>'save-interaction'
+        ]
+    );
+
     progress_refresh_after_event((string)$user['student_id']);
 
     echo json_encode([
         'ok'=>true,
-        'conversation_id'=>$stmt->fetchColumn(),
+        'conversation_id'=>$conversationId,
         'transcription'=>$transcription['text'],
         'teacher_message'=>$teacherText,
         'teacher_audio_url'=>$saved['url'],
