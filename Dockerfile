@@ -1,11 +1,49 @@
-# RS English v15.1 — Correção da migration 033
+FROM php:8.3-apache
 
-A tabela `student_activities` usa `assigned_at` como data de criação/atribuição e não possui a coluna `created_at`.
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
+    DEBIAN_FRONTEND=noninteractive
 
-Foram corrigidas as duas ocorrências na migration `database/033_learning_telemetry.sql`:
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpq-dev \
+        libzip-dev \
+        libicu-dev \
+        libonig-dev \
+        unzip \
+    && docker-php-ext-install -j"$(nproc)" \
+        pdo_pgsql \
+        pgsql \
+        mbstring \
+        intl \
+        zip \
+        opcache \
+    && a2enmod rewrite headers \
+    && rm -rf /var/lib/apt/lists/*
 
-```sql
-COALESCE(sa.completed_at, sa.assigned_at, a.created_at, NOW())
-```
+RUN sed -ri \
+    -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' \
+    /etc/apache2/sites-available/*.conf \
+    /etc/apache2/apache2.conf \
+    /etc/apache2/conf-available/*.conf \
+    && printf '%s\n' \
+        '<Directory /var/www/html/public>' \
+        '    Options FollowSymLinks' \
+        '    AllowOverride All' \
+        '    Require all granted' \
+        '</Directory>' \
+        > /etc/apache2/conf-available/rs-english.conf \
+    && a2enconf rs-english \
+    && echo 'ServerName localhost' > /etc/apache2/conf-available/servername.conf \
+    && a2enconf servername
 
-Como a migration é idempotente, execute primeiro `ROLLBACK;` caso a sessão ainda esteja em transação abortada e depois execute novamente o arquivo completo `database/033_learning_telemetry.sql`.
+WORKDIR /var/www/html
+
+COPY . /var/www/html
+
+RUN mkdir -p /var/www/html/storage/voice \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 /var/www/html/storage
+
+EXPOSE 80
+
+CMD ["apache2-foreground"]
