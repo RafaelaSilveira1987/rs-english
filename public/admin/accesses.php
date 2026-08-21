@@ -130,16 +130,19 @@ require __DIR__ . '/../../templates/header.php';
                     <td><span class="badge <?= ($row['user_status'] ?? '') === 'active' ? 'success' : 'warning' ?>"><?= e((string)($row['user_status'] ?? 'sem acesso')) ?></span></td>
                     <td><?= e(ui_date((string)($row['last_login_at'] ?? ''))) ?></td>
                     <td>
-                        <?php if (($row['user_status'] ?? '') === 'active'): ?>
-                            <span class="label">Ativo</span>
-                        <?php else: ?>
-                            <form method="post">
-                                <?= csrf_field() ?>
-                                <input type="hidden" name="action" value="<?= $row['user_id'] ? 'renew' : 'provision' ?>">
-                                <input type="hidden" name="student_id" value="<?= e((string)$row['student_id']) ?>">
-                                <button class="btn btn-primary btn-sm" type="submit"><?= $row['user_id'] ? 'Gerar novo link' : 'Criar acesso' ?></button>
-                            </form>
-                        <?php endif; ?>
+                        <div class="form-actions" style="justify-content:flex-start;gap:8px;flex-wrap:wrap">
+                            <?php if ($row['user_id']): ?>
+                                <a class="btn btn-secondary btn-sm" href="/admin/user-edit.php?id=<?= e((string)$row['user_id']) ?>">Editar acesso</a>
+                            <?php endif; ?>
+                            <?php if (($row['user_status'] ?? '') !== 'active'): ?>
+                                <form method="post">
+                                    <?= csrf_field() ?>
+                                    <input type="hidden" name="action" value="<?= $row['user_id'] ? 'renew' : 'provision' ?>">
+                                    <input type="hidden" name="student_id" value="<?= e((string)$row['student_id']) ?>">
+                                    <button class="btn btn-primary btn-sm" type="submit"><?= $row['user_id'] ? 'Gerar novo link' : 'Criar acesso' ?></button>
+                                </form>
+                            <?php endif; ?>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>

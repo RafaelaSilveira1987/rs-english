@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="color-scheme" content="light">
 <title>Entrar — RS English</title>
 <link rel="icon" href="/assets/images/rs-english-mark-transparent.png" type="image/png">
-<link rel="stylesheet" href="/assets/css/app.css?v=12.0">
+<link rel="stylesheet" href="/assets/css/app.css?v=16.0">
 </head>
 <body class="login-body">
 <div class="login-page login-page-redesign">

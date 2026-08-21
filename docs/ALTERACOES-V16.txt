@@ -1,0 +1,14 @@
+RS ENGLISH V16 - GESTÃO DE ACESSOS
+
+- Aluno escolhe o nome de usuário no primeiro acesso.
+- Aluno altera nome de usuário em Meu perfil.
+- Aluno altera a própria senha em Meu perfil.
+- Admin edita nome, usuário, e-mail, telefone e status.
+- Admin redefine senha do aluno, professor ou administrador.
+- Admin pode exigir troca de senha no próximo login.
+- Login continua aceitando usuário, e-mail ou telefone.
+- Novos acessos automáticos recebem usuário baseado no nome do aluno.
+- Alteração de senha ou status invalida sessões anteriores.
+- Dados do acesso do aluno são sincronizados com students.
+- Adicionada migration 034_user_access_management.sql.
+- Dockerfile e .dockerignore mantidos como arquivos separados.

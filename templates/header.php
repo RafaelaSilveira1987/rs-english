@@ -6,6 +6,11 @@ require_login();
 $pageTitle = $pageTitle ?? 'RS English';
 $pageSubtitle = $pageSubtitle ?? null;
 $currentPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+$authenticatedUser = current_user();
+if ($authenticatedUser && !empty($authenticatedUser['must_change_password']) && $currentPath !== '/change-password.php') {
+    header('Location:/change-password.php?required=1');
+    exit;
+}
 
 function nav_active_paths(array $paths): string
 {
@@ -24,7 +29,7 @@ function nav_item(string $href, string $label, string $icon, array $paths): void
     echo '</a>';
 }
 
-$user = current_user();
+$user = $authenticatedUser;
 $role = $user['role'] ?? (!empty($_SESSION['legacy_admin']) ? 'admin' : null);
 $isStudentPortal = $role === 'student';
 $defaultSubtitle = $isStudentPortal
@@ -41,7 +46,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 <meta name="color-scheme" content="light">
 <title><?= e($pageTitle) ?> — RS English</title>
 <link rel="icon" href="/assets/images/rs-english-mark-transparent.png" type="image/png">
-<link rel="stylesheet" href="/assets/css/app.css?v=14.0">
+<link rel="stylesheet" href="/assets/css/app.css?v=16.0">
 </head>
 <body class="role-<?= e((string)$role) ?>">
 <div class="sidebar-overlay" data-sidebar-overlay></div>
@@ -90,7 +95,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
         <?php if (is_admin()): ?>
             <div class="nav-section">Administração</div>
             <nav>
-                <?php nav_item('/admin/users.php', 'Usuários', 'users', ['/admin/users.php']); ?>
+                <?php nav_item('/admin/users.php', 'Usuários', 'users', ['/admin/users.php', '/admin/user-edit.php']); ?>
                 <?php nav_item('/admin/accesses.php', 'Acessos dos alunos', 'password', ['/admin/accesses.php']); ?>
                 <?php nav_item('/admin/teacher-settings.php', 'Professor IA', 'bot', ['/admin/teacher-settings.php']); ?>
                 <?php nav_item('/admin/system-health.php', 'Saúde do sistema', 'health', ['/admin/system-health.php']); ?>

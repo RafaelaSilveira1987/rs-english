@@ -177,7 +177,7 @@ SELECT
     sa.score,
     2.00,
     'Nota recuperada de uma atividade concluída antes da v15.',
-    COALESCE(sa.completed_at, sa.created_at, NOW())
+    COALESCE(sa.completed_at, sa.assigned_at, a.created_at, NOW())
 FROM student_activities sa
 JOIN activities a ON a.id = sa.activity_id
 CROSS JOIN LATERAL (
@@ -264,7 +264,7 @@ SELECT
         'skill', a.skill,
         'level', a.level
     ),
-    COALESCE(sa.completed_at, sa.created_at, NOW())
+    COALESCE(sa.completed_at, sa.assigned_at, a.created_at, NOW())
 FROM student_activities sa
 JOIN activities a ON a.id = sa.activity_id
 WHERE sa.status = 'completed'

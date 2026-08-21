@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../src/auth.php';
 require_once __DIR__ . '/../../src/ui.php';
 require_once __DIR__ . '/../../src/portal.php';
+require_once __DIR__ . '/../../src/access.php';
 
 $user = require_student();
 $pdo = db();
@@ -21,14 +22,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($section === 'personal') {
             $name = trim((string)($_POST['name'] ?? ''));
             $email = trim((string)($_POST['email'] ?? ''));
+            $username = trim((string)($_POST['username'] ?? ''));
             if ($name === '') throw new RuntimeException('Nome obrigatório.');
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Informe um e-mail válido.');
 
-            $pdo->prepare('UPDATE app_users SET name = :name, email = :email, updated_at = NOW() WHERE id = :id')
-                ->execute(['name' => $name, 'email' => $email ?: null, 'id' => $user['id']]);
+            $normalizedUsername = access_validate_username($pdo, $username, (string)$user['id']);
+            $pdo->prepare('UPDATE app_users SET name = :name, email = :email, username = :username_value, username_changed_at = CASE WHEN username IS DISTINCT FROM :username_compare THEN NOW() ELSE username_changed_at END, updated_at = NOW() WHERE id = :id')
+                ->execute(['name' => $name, 'email' => $email ?: null, 'username_value' => $normalizedUsername, 'username_compare' => $normalizedUsername, 'id' => $user['id']]);
             $pdo->prepare('UPDATE students SET name = :name, email = :email, updated_at = NOW() WHERE id = :id')
                 ->execute(['name' => $name, 'email' => $email ?: null, 'id' => $user['student_id']]);
-            $success = 'Dados pessoais atualizados.';
+            $success = 'Dados pessoais e usuário atualizados.';
+            forget_current_user_cache();
+        } elseif ($section === 'password') {
+            $currentPassword = (string)($_POST['current_password'] ?? '');
+            $newPassword = (string)($_POST['new_password'] ?? '');
+            $confirmation = (string)($_POST['new_password_confirmation'] ?? '');
+            $stmt = $pdo->prepare('SELECT password_hash FROM app_users WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $user['id']]);
+            $hash = (string)$stmt->fetchColumn();
+            if (!password_verify($currentPassword, $hash)) throw new RuntimeException('Senha atual incorreta.');
+            if ($newPassword !== $confirmation) throw new RuntimeException('As novas senhas não são iguais.');
+
+            $newAuthVersion = access_set_password($pdo, (string)$user['id'], $newPassword, false, null);
+            $_SESSION['auth_version'] = $newAuthVersion;
+            forget_current_user_cache();
+            $success = 'Senha alterada com sucesso.';
         } else {
             $dailyMinutes = max(5, min(180, (int)($_POST['daily_minutes'] ?? 20)));
             $weeklyDays = max(1, min(7, (int)($_POST['weekly_days'] ?? 5)));
@@ -124,7 +142,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         portal_record_event((string)$user['student_id'], 'profile', 'Preferências atualizadas', $success);
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        $error = $e->getMessage();
+        $error = str_contains($e->getMessage(), 'duplicate key')
+            ? 'Este usuário ou e-mail já está sendo usado.'
+            : $e->getMessage();
     }
 }
 
@@ -165,19 +185,29 @@ require __DIR__ . '/../../templates/header.php';
         <form method="post">
             <?= csrf_field() ?><input type="hidden" name="section" value="personal">
             <div class="form-row"><label>Nome</label><input name="name" value="<?= e((string)$data['name']) ?>" required></div>
+            <div class="form-row"><label>Nome de usuário</label><input name="username" value="<?= e((string)($data['username'] ?? '')) ?>" required autocomplete="username"><small class="form-help">Use entre 4 e 40 caracteres: letras, números, ponto, hífen ou sublinhado.</small></div>
             <div class="form-row"><label>E-mail</label><input type="email" name="email" value="<?= e((string)($data['email'] ?? '')) ?>"></div>
-            <div class="form-row"><label>Telefone</label><input value="<?= e((string)($data['phone'] ?? '')) ?>" disabled><small class="form-help">O telefone está vinculado à integração do WhatsApp.</small></div>
+            <div class="form-row"><label>Telefone</label><input value="<?= e((string)($data['phone'] ?? '')) ?>" disabled><small class="form-help">O telefone continua vinculado à integração do WhatsApp e também pode ser usado no login.</small></div>
             <div class="form-actions"><button class="btn btn-primary">Salvar dados</button></div>
         </form>
     </section>
 
     <section class="panel">
-        <div class="panel-head"><div><h2>Acesso e segurança</h2><p>Informações vinculadas ao seu usuário.</p></div></div>
+        <div class="panel-head"><div><h2>Acesso e segurança</h2><p>Altere sua senha diretamente no portal do aluno.</p></div></div>
         <div class="info-grid">
-            <div class="info-item"><span>Usuário</span><strong><?= e((string)($data['username'] ?? '—')) ?></strong></div>
+            <div class="info-item"><span>Usuário atual</span><strong><?= e((string)($data['username'] ?? '—')) ?></strong></div>
             <div class="info-item"><span>Último acesso</span><strong><?= e(ui_date((string)($data['last_login_at'] ?? ''))) ?></strong></div>
         </div>
-        <div class="list-card" style="margin-top:14px"><strong>Senha</strong><p>Atualize sua senha periodicamente e não compartilhe seu acesso.</p><a class="btn btn-secondary btn-sm" href="/change-password.php" style="margin-top:10px">Alterar senha</a></div>
+        <form method="post" style="margin-top:18px">
+            <?= csrf_field() ?><input type="hidden" name="section" value="password">
+            <div class="form-row"><label>Senha atual</label><input type="password" name="current_password" required autocomplete="current-password"></div>
+            <div class="grid-2 form-grid-2">
+                <div class="form-row"><label>Nova senha</label><input type="password" name="new_password" required autocomplete="new-password"></div>
+                <div class="form-row"><label>Confirmar nova senha</label><input type="password" name="new_password_confirmation" required autocomplete="new-password"></div>
+            </div>
+            <small class="form-help">Mínimo 8 caracteres, com maiúscula, minúscula e número.</small>
+            <div class="form-actions"><button class="btn btn-secondary" type="submit">Alterar senha</button></div>
+        </form>
     </section>
 </div>
 
