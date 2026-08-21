@@ -690,3 +690,20 @@ body:not(.login-body)>.login-page .login-box{width:min(500px,100%)}
     .history-day{grid-template-columns:1fr;gap:9px}.history-date{position:static;width:max-content}.activity-sidebar{grid-template-columns:1fr}.activity-card-row{grid-template-columns:auto 1fr}.activity-card-row>.btn{grid-column:1/-1;width:100%}.activity-result{grid-template-columns:1fr}.activity-detail-head{display:block}.activity-detail-head>.badge{margin-top:12px}
     .diagnostic-settings,.form-grid-2,.reminder-settings{grid-template-columns:1fr}.chat-complete-notice{align-items:flex-start;flex-direction:column}.filter-form select{width:100%}
 }
+
+/* v14 — progresso real */
+.progress-filter{grid-template-columns:minmax(240px,1.4fr) repeat(3,minmax(150px,.7fr)) auto}
+.level-distribution{display:grid;gap:16px}
+.level-distribution-row{display:grid;grid-template-columns:76px 1fr 34px;align-items:center;gap:12px}
+.level-distribution-row strong{text-align:right}
+.admin-activity-chart{min-height:230px;overflow-x:auto;padding-bottom:4px}
+.progress-card-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 10px}
+.progress-card-stats span{display:flex;flex-direction:column;gap:2px;color:var(--muted);font-size:12px}
+.progress-card-stats b{color:var(--text);font-size:15px}
+.progress-student-card{display:block;text-decoration:none;color:inherit}
+.progress-kpi-list{display:grid;gap:10px}
+.badge.success{background:#e9f9ef;color:#157347;border-color:#c7efd5}
+.badge.danger{background:#fff0f0;color:#b42318;border-color:#ffd1d1}
+.skill-card small{display:block;margin-top:6px;color:var(--muted);font-size:11px}
+@media(max-width:1100px){.progress-filter{grid-template-columns:1fr 1fr}.progress-filter button{width:100%}.progress-card-stats{grid-template-columns:1fr 1fr}}
+@media(max-width:680px){.progress-filter{grid-template-columns:1fr}.progress-card-stats{grid-template-columns:1fr 1fr}.level-distribution-row{grid-template-columns:64px 1fr 28px}}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../../src/db.php';
 require_once __DIR__ . '/../../../src/api.php';
+require_once __DIR__ . '/../../../src/progress.php';
 
 require_n8n_key();
 
@@ -843,6 +844,7 @@ try {
     ]);
 
     $pdo->commit();
+    progress_refresh_after_event((string)$studentId);
 
     json_response([
         'success' => true,

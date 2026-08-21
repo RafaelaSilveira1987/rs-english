@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__.'/../../../src/auth.php';
 require_once __DIR__.'/../../../src/audio.php';
+require_once __DIR__.'/../../../src/progress.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -122,6 +123,8 @@ try{
         'teacher_audio_path'=>$saved['relative'],
         'teacher_voice'=>$speech['voice']
     ]);
+
+    progress_refresh_after_event((string)$user['student_id']);
 
     echo json_encode([
         'ok'=>true,

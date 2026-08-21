@@ -130,3 +130,23 @@ docs/fluxos/rs-english-n8n-v13-activity-evaluator-economico.json
 ```
 
 Guia: `docs/INSTALL-V13-MODELOS-ECONOMICOS.md`.
+
+## Versão 14 — progresso real do aluno e do admin
+
+A v14 centraliza os indicadores em `src/progress.php` e calcula o avanço usando os registros reais de sessões, mensagens, atividades, vocabulário, correções, áudio, diagnóstico e metas.
+
+Execute:
+
+```text
+database/032_real_progress.sql
+```
+
+Nova visão administrativa:
+
+```text
+/admin/progress.php
+```
+
+No portal do aluno, `/portal/index.php` e `/portal/progress.php` agora usam a mesma fonte de cálculo que o admin. Assim, o número exibido para o aluno e o número visto pela gestão vêm dos mesmos registros.
+
+Guia: `docs/INSTALL-V14-PROGRESSO-REAL.md`.

@@ -41,7 +41,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 <meta name="color-scheme" content="light">
 <title><?= e($pageTitle) ?> — RS English</title>
 <link rel="icon" href="/assets/images/rs-english-mark-transparent.png" type="image/png">
-<link rel="stylesheet" href="/assets/css/app.css?v=12.0">
+<link rel="stylesheet" href="/assets/css/app.css?v=14.0">
 </head>
 <body class="role-<?= e((string)$role) ?>">
 <div class="sidebar-overlay" data-sidebar-overlay></div>
@@ -83,6 +83,7 @@ $homeHref = $isStudentPortal ? '/portal/index.php' : '/index.php';
 
         <div class="nav-section">Análise</div>
         <nav>
+            <?php nav_item('/admin/progress.php', 'Progresso geral', 'progress', ['/admin/progress.php']); ?>
             <?php nav_item('/reports.php', 'Relatórios', 'reports', ['/reports.php']); ?>
         </nav>
 
