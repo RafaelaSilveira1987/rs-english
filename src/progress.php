@@ -5,9 +5,16 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/portal.php';
 
-function progress_clamp(float|int|null $value): float
+function progress_clamp(mixed $value): float
 {
-    return max(0, min(100, (float)($value ?? 0)));
+    // PostgreSQL/PDO pode retornar colunas NUMERIC/DECIMAL como string (ex.: "1.00").
+    // Normalizamos aqui antes de aplicar os limites para funcionar com strict_types=1.
+    if ($value === null || $value === '' || !is_numeric($value)) {
+        return 0.0;
+    }
+
+    $number = (float)$value;
+    return max(0.0, min(100.0, $number));
 }
 
 function progress_skill_values(array $profile): array
