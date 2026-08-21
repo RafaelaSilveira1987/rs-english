@@ -635,7 +635,7 @@ body:not(.login-body)>.login-page .login-box{width:min(500px,100%)}
 .diagnostic-hero{display:flex;justify-content:space-between;align-items:center;gap:28px}
 .diagnostic-level-card{position:relative;z-index:1;min-width:190px;padding:22px;text-align:center;border:1px solid rgba(255,255,255,.16);border-radius:20px;background:rgba(255,255,255,.08);backdrop-filter:blur(12px)}
 .diagnostic-level-card span,.diagnostic-level-card small{display:block;color:#b8c4df;font-size:11px}.diagnostic-level-card strong{display:block;margin:6px 0;font-size:58px;line-height:1;font-weight:950;letter-spacing:-.08em;background:linear-gradient(135deg,#fff,#70e5ff 45%,#e28cff);-webkit-background-clip:text;background-clip:text;color:transparent}
-.diagnostic-progress-panel .panel-head{align-items:center}.diagnostic-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:20px}
+.diagnostic-progress-panel .panel-head{align-items:center}.diagnostic-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:20px}
 .diagnostic-step{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border);border-radius:14px;background:#fafcff;opacity:.68}
 .diagnostic-step>span{width:30px;height:30px;flex:0 0 auto;display:grid;place-items:center;border-radius:10px;background:var(--neutral-soft);color:var(--neutral);font-size:12px;font-weight:900}
 .diagnostic-step div{display:grid;gap:2px}.diagnostic-step strong{font-size:11px}.diagnostic-step small{color:var(--muted);font-size:9px;line-height:1.3}

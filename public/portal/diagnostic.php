@@ -13,9 +13,10 @@ $diagnostic = portal_latest_diagnostic($studentId);
 $plan = portal_active_plan($studentId);
 
 $status = strtolower((string)($profile['diagnostic_status'] ?? 'pending'));
-$step = max(0, min(5, (int)($profile['diagnostic_step'] ?? 0)));
+$diagnosticTotalSteps = 8;
+$step = max(0, min($diagnosticTotalSteps, (int)($profile['diagnostic_step'] ?? 0)));
 $complete = in_array($status, ['completed', 'complete', 'finished'], true);
-$progress = $complete ? 100 : (int)round(($step / 5) * 100);
+$progress = $complete ? 100 : (int)round(($step / $diagnosticTotalSteps) * 100);
 
 $scores = $diagnostic['scores'] ?? [];
 if (!$scores) {
@@ -92,7 +93,7 @@ require __DIR__ . '/../../templates/header.php';
     <div class="panel-head">
         <div>
             <h2>Etapas do diagnóstico</h2>
-            <p><?= $complete ? 'Todas as etapas principais foram registradas.' : 'Etapa ' . $step . ' de 5.' ?></p>
+            <p><?= $complete ? 'Todas as etapas principais foram registradas.' : 'Etapa ' . $step . ' de ' . $diagnosticTotalSteps . '.' ?></p>
         </div>
         <strong><?= $progress ?>%</strong>
     </div>
@@ -101,10 +102,13 @@ require __DIR__ . '/../../templates/header.php';
         <?php
         $steps = [
             1 => ['Autoavaliação', 'Ponto de partida'],
-            2 => ['Compreensão', 'Entendimento de mensagens'],
-            3 => ['Interação', 'Capacidade de responder'],
-            4 => ['Produção', 'Construção de frases'],
-            5 => ['Síntese', 'Nível e plano inicial'],
+            2 => ['Entrada', 'Primeira amostra'],
+            3 => ['Compreensão', 'Entendimento contextual'],
+            4 => ['Estrutura', 'Gramática em uso'],
+            5 => ['Leitura', 'Compreensão de texto'],
+            6 => ['Produção', 'Construção de frases'],
+            7 => ['Interação', 'Coerência e autonomia'],
+            8 => ['Síntese', 'Nível e plano inicial'],
         ];
         foreach ($steps as $number => [$title, $description]):
             $done = $complete || $step >= $number;

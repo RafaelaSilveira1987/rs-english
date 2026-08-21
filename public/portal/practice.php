@@ -42,7 +42,8 @@ $topic = $session['topic'] ?? $profile['conversation_topic'] ?? 'daily_life';
 $style = $session['style'] ?? $profile['conversation_style'] ?? 'guided';
 $maxTurns = (int)($session['max_turns'] ?? $profile['conversation_max_turns'] ?? 10);
 $correction = $profile['correction_mode'] ?? 'balanced';
-$diagnosticStep = max(0, min(5, (int)($profile['diagnostic_step'] ?? 0)));
+$diagnosticTotalSteps = 8;
+$diagnosticStep = max(0, min($diagnosticTotalSteps, (int)($profile['diagnostic_step'] ?? 0)));
 
 $pageTitle = $mode === 'diagnostic' ? 'Diagnóstico com Emma' : 'Praticar com Emma';
 $pageSubtitle = $mode === 'diagnostic'
@@ -53,7 +54,7 @@ require __DIR__ . '/../../templates/header.php';
 
 <?php if ($mode === 'diagnostic'): ?>
 <div class="diagnostic-mode-banner">
-    <div><?= ui_icon('diagnostic') ?><span><strong>Modo diagnóstico</strong><small>Etapa <?= $diagnosticStep ?> de 5 · responda com naturalidade, sem usar tradutor.</small></span></div>
+    <div><?= ui_icon('diagnostic') ?><span><strong>Modo diagnóstico</strong><small>Etapa <?= $diagnosticStep ?> de <?= $diagnosticTotalSteps ?> · responda com naturalidade, sem usar tradutor.</small></span></div>
     <a class="btn btn-secondary btn-sm" href="/portal/diagnostic.php">Ver diagnóstico</a>
 </div>
 <?php endif; ?>

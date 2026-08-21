@@ -302,7 +302,7 @@ $query = $pdo->prepare("
     FROM messages
     WHERE student_id = :student_id
     ORDER BY created_at DESC
-    LIMIT 14
+    LIMIT 20
 ");
 $query->execute(['student_id' => $student['id']]);
 $recentMessages = array_reverse($query->fetchAll(PDO::FETCH_ASSOC));

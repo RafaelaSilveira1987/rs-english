@@ -496,7 +496,7 @@ try {
     $fluency = (float)($scores['fluency'] ?? 0);
     $pronunciation = isset($scores['pronunciation']) && $scores['pronunciation'] !== null
         ? (float)$scores['pronunciation']
-        : 0.0;
+        : null;
 
     $stage = 'completing_student_profile';
 
