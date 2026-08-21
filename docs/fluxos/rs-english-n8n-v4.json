@@ -219,7 +219,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.diagnostic_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.diagnostic_prompt } }}",
         "options": {}
       },
       "id": "d8a60082-39b8-4e03-87fd-bb141293a236",
@@ -353,7 +353,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.teacher_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.teacher_prompt } }}",
         "options": {}
       },
       "id": "c99c79f9-bf96-4c41-9090-d9ed47f25880",
@@ -397,7 +397,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.evaluator_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.evaluator_prompt } }}",
         "options": {}
       },
       "id": "f9694941-6794-4c70-9029-f31964ed2b84",
@@ -593,17 +593,35 @@
     },
     {
       "parameters": {
-        "resource": "audio",
-        "operation": "transcribe",
-        "binaryPropertyName": "data",
-        "options": {
-          "language": "en"
-        }
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "={{ $env.OPENAI_TRANSCRIPTION_MODEL || 'gpt-4o-mini-transcribe' }}"
+            },
+            {
+              "name": "response_format",
+              "value": "json"
+            }
+          ]
+        },
+        "options": {}
       },
       "id": "a13b478c-f5f1-4135-b1e4-9b2de3312767",
       "name": "Transcrever Áudio",
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
       "position": [
         370,
         -300

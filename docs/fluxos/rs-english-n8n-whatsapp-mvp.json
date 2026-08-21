@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## RS English — MVP WhatsApp\n\nAntes de ativar, substitua:\n\n1. `https://SEU_DOMINIO` pelo domínio do painel PHP.\n2. `SUA_N8N_API_KEY` pela mesma chave configurada no EasyPanel.\n3. `SUA_OPENAI_API_KEY` pela chave da OpenAI (ou converta para credencial no n8n).\n4. `SEU_MODELO_OPENAI` pelo modelo que você deseja usar.\n5. `https://SEU_EVOLUTION` pelo endereço da Evolution API.\n6. `SUA_EVOLUTION_API_KEY` pela chave da Evolution API.\n7. `SUA_INSTANCIA` pelo nome da instância.\n\nO webhook foi configurado como:\n`/webhook/rs-english`\n\nEste primeiro MVP trata mensagens de texto. O normalizador já identifica áudio, mas a transcrição será adicionada no próximo workflow.",
+        "content": "## RS English — MVP WhatsApp\n\nAntes de ativar, substitua:\n\n1. `https://SEU_DOMINIO` pelo domínio do painel PHP.\n2. `SUA_N8N_API_KEY` pela mesma chave configurada no EasyPanel.\n3. `SUA_OPENAI_API_KEY` pela chave da OpenAI (ou converta para credencial no n8n).\n4. `OPENAI_TEXT_MODEL=gpt-5.6-luna` pelo modelo que você deseja usar.\n5. `https://SEU_EVOLUTION` pelo endereço da Evolution API.\n6. `SUA_EVOLUTION_API_KEY` pela chave da Evolution API.\n7. `SUA_INSTANCIA` pelo nome da instância.\n\nO webhook foi configurado como:\n`/webhook/rs-english`\n\nEste primeiro MVP trata mensagens de texto. O normalizador já identifica áudio, mas a transcrição será adicionada no próximo workflow.",
         "height": 390,
         "width": 620
       },
@@ -178,7 +178,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.teacher_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.teacher_prompt } }}",
         "options": {}
       },
       "id": "fe59239c-b01c-46db-aa97-b848c00f8e99",
@@ -222,7 +222,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.evaluator_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.evaluator_prompt } }}",
         "options": {}
       },
       "id": "2f0e20c1-f881-4f59-a4a6-ccdce4090e70",

@@ -1,0 +1,15 @@
+RS English v13 — alterações de economia
+
+1. Texto/diagnóstico/correções/relatórios:
+   OPENAI_TEXT_MODEL=gpt-5.6-luna
+
+2. Transcrição de áudio:
+   OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+
+3. Voz da Emma:
+   OPENAI_TTS_MODEL=gpt-4o-mini-tts
+
+4. Todos os workflows JSON do pacote foram atualizados.
+5. Os workflows ativos possuem cópias com nome v13.
+6. Nós antigos de transcrição sem seleção explícita de modelo foram convertidos para HTTP Request multipart com modelo econômico.
+7. As chaves da OpenAI continuam fora dos arquivos; use credencial do n8n e variável OPENAI_API_KEY no PHP.

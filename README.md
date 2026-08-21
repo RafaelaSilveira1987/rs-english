@@ -1,4 +1,4 @@
-# RS English v11.0 — Painel completo do aluno
+# RS English v13 — Emma adaptativa, portal completo e modelos econômicos
 
 Versão consolidada em PHP 8.3 + PostgreSQL para o portal do aluno, integrada ao n8n, à Emma e aos dados já registrados pelo WhatsApp.
 
@@ -52,6 +52,7 @@ N8N_API_KEY=chave-interna
 N8N_WEB_TEACHER_URL=https://n8n.rsautomacaodigital.cloud/webhook/rs-english-web
 N8N_WEB_ACTIVITY_URL=https://n8n.rsautomacaodigital.cloud/webhook/rs-english-activity
 OPENAI_API_KEY=chave-openai
+OPENAI_TEXT_MODEL=gpt-5.6-luna
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
 ```
@@ -106,3 +107,26 @@ A validação definitiva de consultas e permissões deve ser feita após aplicar
 Execute `database/031_adaptive_onboarding_access.sql` e importe `docs/fluxos/rs-english-n8n-v12-adaptive-access.json`.
 
 Guia: `docs/INSTALL-V12-ADAPTIVE-ACCESS.md`.
+
+
+## Versão 13 — modelos econômicos em todo o projeto
+
+Todos os fluxos incluídos foram padronizados para usar variáveis de ambiente, sem modelo de texto caro fixado no JSON:
+
+```env
+OPENAI_TEXT_MODEL=gpt-5.6-luna
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+```
+
+No serviço **n8n**, configure pelo menos `OPENAI_TEXT_MODEL` e `OPENAI_TRANSCRIPTION_MODEL`. No serviço **web/PHP**, configure `OPENAI_TRANSCRIPTION_MODEL` e `OPENAI_TTS_MODEL`.
+
+Fluxos principais da v13:
+
+```text
+docs/fluxos/rs-english-n8n-v13-adaptive-economico.json
+docs/fluxos/rs-english-n8n-v13-web-portal-economico.json
+docs/fluxos/rs-english-n8n-v13-activity-evaluator-economico.json
+```
+
+Guia: `docs/INSTALL-V13-MODELOS-ECONOMICOS.md`.

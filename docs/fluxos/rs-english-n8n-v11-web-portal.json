@@ -160,7 +160,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'gpt-4o', input: $json.diagnostic_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.diagnostic_prompt } }}",
         "options": {}
       },
       "id": "426106a0-f6e4-446f-8316-c1bd7adf13c2",
@@ -289,7 +289,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'gpt-4o', input: $json.teacher_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.teacher_prompt } }}",
         "options": {}
       },
       "id": "bb4fb43d-fffd-4be7-a1c2-747a6239adc0",
@@ -316,7 +316,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'gpt-4o', input: $json.evaluator_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.evaluator_prompt } }}",
         "options": {},
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "openAiApi"

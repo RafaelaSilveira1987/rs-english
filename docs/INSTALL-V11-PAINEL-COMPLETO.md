@@ -51,6 +51,7 @@ Obrigatórias para áudio:
 
 ```env
 OPENAI_API_KEY=CHAVE_OPENAI
+OPENAI_TEXT_MODEL=gpt-5.6-luna
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
 ```

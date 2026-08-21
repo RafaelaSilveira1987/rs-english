@@ -118,7 +118,7 @@
     },
     {
       "parameters": {
-        "content": "## RS English v3 — Texto + Áudio\n\nEsta versão mantém diagnóstico + professor e adiciona áudio.\n\nTrocar:\n- `https://SEU_DOMINIO`\n- `SUA_N8N_API_KEY`\n- `SUA_OPENAI_API_KEY`\n- `SEU_MODELO_OPENAI`\n- `SEU_MODELO_TRANSCRICAO`\n- `SUA_EVOLUTION_API_KEY`\n\nÁudio:\nEvolution → getBase64FromMediaMessage → binário → OpenAI transcription → mesmo Teacher/Evaluator.\n\nObservação: a rota usada é:\n`POST /chat/getBase64FromMediaMessage/{instance}`\n\nWebhook: `/rs-english`\n",
+        "content": "## RS English v3 — Texto + Áudio\n\nEsta versão mantém diagnóstico + professor e adiciona áudio.\n\nTrocar:\n- `https://SEU_DOMINIO`\n- `SUA_N8N_API_KEY`\n- `SUA_OPENAI_API_KEY`\n- `OPENAI_TEXT_MODEL=gpt-5.6-luna`\n- `OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe`\n- `SUA_EVOLUTION_API_KEY`\n\nÁudio:\nEvolution → getBase64FromMediaMessage → binário → OpenAI transcription → mesmo Teacher/Evaluator.\n\nObservação: a rota usada é:\n`POST /chat/getBase64FromMediaMessage/{instance}`\n\nWebhook: `/rs-english`\n",
         "height": 260,
         "width": 520
       },
@@ -335,7 +335,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'gpt-4o', input: $json.diagnostic_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.diagnostic_prompt } }}",
         "options": {}
       },
       "id": "0c06812a-eb6c-4920-b169-66ce0906c9de",
@@ -454,7 +454,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'gpt-4o', input: $json.teacher_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.teacher_prompt } }}",
         "options": {}
       },
       "id": "2c15c6c0-3a6a-43fe-8714-be33fc450003",
@@ -481,7 +481,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'gpt-4o', input: $json.evaluator_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.evaluator_prompt } }}",
         "options": {},
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "openAiApi"
@@ -602,12 +602,33 @@
     },
     {
       "parameters": {
-        "resource": "audio",
-        "operation": "transcribe",
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "={{ $env.OPENAI_TRANSCRIPTION_MODEL || 'gpt-4o-mini-transcribe' }}"
+            },
+            {
+              "name": "response_format",
+              "value": "json"
+            }
+          ]
+        },
         "options": {}
       },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.3,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
       "position": [
         2176,
         2112

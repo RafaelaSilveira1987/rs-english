@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## RS English v2\\nExecute `013_diagnostic.sql`, substitua `context.php`, adicione `save-diagnostic.php` e faça redeploy do PHP.\\n\\nTroque no workflow: SEU_DOMINIO, SUA_N8N_API_KEY, SUA_OPENAI_API_KEY, SEU_MODELO_OPENAI, SUA_EVOLUTION_API_KEY.",
+        "content": "## RS English v2\\nExecute `013_diagnostic.sql`, substitua `context.php`, adicione `save-diagnostic.php` e faça redeploy do PHP.\\n\\nTroque no workflow: SEU_DOMINIO, SUA_N8N_API_KEY, SUA_OPENAI_API_KEY, OPENAI_TEXT_MODEL=gpt-5.6-luna, SUA_EVOLUTION_API_KEY.",
         "height": 260,
         "width": 520
       },
@@ -219,7 +219,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.diagnostic_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.diagnostic_prompt } }}",
         "options": {}
       },
       "id": "d8a60082-39b8-4e03-87fd-bb141293a236",
@@ -353,7 +353,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.teacher_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.teacher_prompt } }}",
         "options": {}
       },
       "id": "c99c79f9-bf96-4c41-9090-d9ed47f25880",
@@ -397,7 +397,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model: 'SEU_MODELO_OPENAI', input: $json.evaluator_prompt } }}",
+        "jsonBody": "={{ { model: ($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input: $json.evaluator_prompt } }}",
         "options": {}
       },
       "id": "f9694941-6794-4c70-9029-f31964ed2b84",

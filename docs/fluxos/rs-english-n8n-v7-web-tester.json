@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## RS English — Web Tester\n\nPermite conversar com Emma pelo painel sem WhatsApp.\n\nTroque:\n- `https://SEU_DOMINIO`\n- `SUA_N8N_API_KEY`\n- `SUA_OPENAI_API_KEY`\n- `SEU_MODELO_OPENAI`\n\nWebhook:\n`/rs-english-web`\n\nNo EasyPanel:\n`N8N_WEB_TEACHER_URL=https://SEU_N8N/webhook/rs-english-web`",
+        "content": "## RS English — Web Tester\n\nPermite conversar com Emma pelo painel sem WhatsApp.\n\nTroque:\n- `https://SEU_DOMINIO`\n- `SUA_N8N_API_KEY`\n- `SUA_OPENAI_API_KEY`\n- `OPENAI_TEXT_MODEL=gpt-5.6-luna`\n\nWebhook:\n`/rs-english-web`\n\nNo EasyPanel:\n`N8N_WEB_TEACHER_URL=https://SEU_N8N/webhook/rs-english-web`",
         "height": 280,
         "width": 500
       },
@@ -125,7 +125,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model:'SEU_MODELO_OPENAI', input:$json.teacher_prompt } }}",
+        "jsonBody": "={{ { model:($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input:$json.teacher_prompt } }}",
         "options": {}
       },
       "id": "43762943-3843-43be-8bdc-6434ddb1e9af",
@@ -169,7 +169,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model:'SEU_MODELO_OPENAI', input:$json.evaluator_prompt } }}",
+        "jsonBody": "={{ { model:($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input:$json.evaluator_prompt } }}",
         "options": {}
       },
       "id": "2d68957a-acbc-4938-8adc-dfd8ed941d04",

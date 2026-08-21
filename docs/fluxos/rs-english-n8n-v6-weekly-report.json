@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## RS English v6 — Relatório Semanal\nTroque SEU_DOMINIO, SUA_N8N_API_KEY, SUA_OPENAI_API_KEY, SEU_MODELO_OPENAI, SEU_EVOLUTION, SUA_EVOLUTION_API_KEY e SUA_INSTANCIA.\nAgendamento padrão: segunda-feira 08:00.",
+        "content": "## RS English v6 — Relatório Semanal\nTroque SEU_DOMINIO, SUA_N8N_API_KEY, SUA_OPENAI_API_KEY, OPENAI_TEXT_MODEL=gpt-5.6-luna, SEU_EVOLUTION, SUA_EVOLUTION_API_KEY e SUA_INSTANCIA.\nAgendamento padrão: segunda-feira 08:00.",
         "height": 260,
         "width": 520
       },
@@ -141,7 +141,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { model:'SEU_MODELO_OPENAI', input:$json.teacher_prompt } }}",
+        "jsonBody": "={{ { model:($env.OPENAI_TEXT_MODEL || 'gpt-5.6-luna'), input:$json.teacher_prompt } }}",
         "options": {}
       },
       "id": "822ed3b8-c5fd-4c76-a01f-33d614b1f323",
