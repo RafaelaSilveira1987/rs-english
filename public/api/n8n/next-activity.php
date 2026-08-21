@@ -9,7 +9,7 @@ $pdo=db();
 $q=$pdo->prepare("SELECT s.id,s.name,COALESCE(sp.overall_level,'A1') overall_level,sp.goal FROM students s LEFT JOIN student_profiles sp ON sp.student_id=s.id WHERE s.phone=:phone LIMIT 1");
 $q->execute(['phone'=>$phone]); $student=$q->fetch();
 if(!$student) json_response(['found'=>false,'phone'=>$phone]);
-$q=$pdo->prepare("SELECT sa.id student_activity_id,a.id activity_id,a.title,a.description,a.activity_type,a.level,a.skill,a.instructions,a.content,a.xp_reward,a.estimated_minutes FROM student_activities sa JOIN activities a ON a.id=sa.activity_id WHERE sa.student_id=:id AND sa.status='pending' AND a.active=true ORDER BY sa.assigned_at LIMIT 1");
+$q=$pdo->prepare("SELECT sa.id student_activity_id,a.id activity_id,a.title,a.description,a.activity_type,a.level,a.skill,a.instructions,a.content,a.xp_reward,a.estimated_minutes FROM student_activities sa JOIN activities a ON a.id=sa.activity_id WHERE sa.student_id=:id AND sa.status='pending' AND (sa.available_from IS NULL OR sa.available_from<=CURRENT_DATE) AND a.active=true ORDER BY sa.assigned_at LIMIT 1");
 $q->execute(['id'=>$student['id']]); $activity=$q->fetch();
 if(!$activity){
   $e=$pdo->prepare("SELECT topic,canonical_key,occurrences,mastery_score,original_text,corrected_text FROM student_errors WHERE student_id=:id AND status='learning' ORDER BY CASE WHEN next_review_at IS NULL OR next_review_at<=NOW() THEN 0 ELSE 1 END,occurrences DESC,mastery_score ASC LIMIT 1");

@@ -79,7 +79,7 @@ require __DIR__ . '/../../templates/header.php';
 <section class="cards cards-4">
     <article class="card metric-card"><div><div class="label">Competências medidas</div><div class="metric"><?= number_format((float)$m['skill_average'], 0) ?>%</div><div class="metric-sub"><?= (int)$m['skills_measured'] ?>/8 competências · <?= (int)$m['skill_evidence_count'] ?> evidências</div></div><div class="metric-icon"><?= ui_icon('progress') ?></div></article>
     <article class="card metric-card"><div><div class="label">Meta desta semana</div><div class="metric"><?= number_format((float)$m['week']['goal_percent'], 0) ?>%</div><div class="metric-sub"><?= (int)$m['week']['completed_activities'] ?> atividades · <?= (int)$m['week']['completed_minutes'] ?> min</div></div><div class="metric-icon"><?= ui_icon('target') ?></div></article>
-    <article class="card metric-card"><div><div class="label">Tempo de estudo</div><div class="metric"><?= (int)$m['study_minutes_30d'] ?></div><div class="metric-sub">minutos em 30 dias · <?= (int)$m['study_minutes_total'] ?> min no total</div></div><div class="metric-icon"><?= ui_icon('history') ?></div></article>
+    <article class="card metric-card"><div><div class="label">Tempo de estudo</div><div class="metric"><?= (int)$m['study_minutes_30d'] ?></div><div class="metric-sub"><?= (int)$m['study_time_30d']['platform_minutes'] ?> min plataforma · <?= (int)$m['study_time_30d']['whatsapp_minutes'] ?> min WhatsApp</div></div><div class="metric-icon"><?= ui_icon('history') ?></div></article>
     <article class="card metric-card"><div><div class="label">Frequência em 30 dias</div><div class="metric"><?= (int)$m['active_days_30d'] ?></div><div class="metric-sub">dias com eventos reais de aprendizagem</div></div><div class="metric-icon"><?= ui_icon('streak') ?></div></article>
 </section>
 
@@ -109,7 +109,7 @@ require __DIR__ . '/../../templates/header.php';
 </div>
 
 <section class="cards cards-4 section-gap">
-    <article class="card metric-card"><a class="metric-link" href="/portal/activities.php"></a><div><div class="label">Atividades concluídas</div><div class="metric"><?= (int)$m['activities_completed'] ?></div><div class="metric-sub"><?= number_format((float)$m['activity_completion_rate'], 0) ?>% das atribuídas · média <?= number_format((float)$m['activity_average_score'], 0) ?>%</div></div><div class="metric-icon"><?= ui_icon('activities') ?></div></article>
+    <article class="card metric-card"><a class="metric-link" href="/portal/activities.php"></a><div><div class="label">Atividades concluídas</div><div class="metric"><?= (int)$m['activities_completed'] ?></div><div class="metric-sub"><?= (int)$m['activities_available'] ?> disponíveis · <?= (int)$m['activities_scheduled'] ?> programadas · média <?= number_format((float)$m['activity_average_score'], 0) ?>%</div></div><div class="metric-icon"><?= ui_icon('activities') ?></div></article>
     <article class="card metric-card"><a class="metric-link" href="/portal/vocabulary.php"></a><div><div class="label">Palavras dominadas</div><div class="metric"><?= (int)$m['vocabulary_mastered'] ?></div><div class="metric-sub"><?= (int)$m['vocabulary_total'] ?> registradas · <?= number_format((float)$m['vocabulary_mastery_rate'], 0) ?>% dominadas</div></div><div class="metric-icon"><?= ui_icon('vocabulary') ?></div></article>
     <article class="card metric-card"><a class="metric-link" href="/portal/corrections.php"></a><div><div class="label">Correções</div><div class="metric"><?= (int)$m['corrections_open'] ?></div><div class="metric-sub"><?= (int)$m['corrections_recurring'] ?> recorrentes · <?= number_format((float)$m['corrections_resolved_rate'], 0) ?>% resolvidas</div></div><div class="metric-icon"><?= ui_icon('corrections') ?></div></article>
     <article class="card metric-card"><div><div class="label">Conversação</div><div class="metric"><?= (int)$m['sessions_30d'] ?></div><div class="metric-sub"><?= (int)$m['messages_30d'] ?> mensagens · <?= number_format((float)$m['voice_minutes_total'], 0) ?> min de áudio</div></div><div class="metric-icon"><?= ui_icon('practice') ?></div></article>
@@ -120,7 +120,7 @@ require __DIR__ . '/../../templates/header.php';
     <div class="panel-head"><div><h2>Últimas interações</h2><p>Histórico vinculado ao seu próprio cadastro.</p></div></div>
     <div class="timeline">
         <?php foreach ($recentMessages as $message): ?>
-            <div class="timeline-item"><span class="timeline-dot"></span><strong><?= $message['role'] === 'teacher' ? 'Emma' : 'Você' ?> · <?= e(ui_status_label((string)$message['message_type'])) ?></strong><p><?= e(mb_strimwidth((string)($message['content'] ?: $message['transcription'] ?: ''), 0, 180, '…')) ?></p><time><?= e(ui_date((string)$message['created_at'])) ?></time></div>
+            <div class="timeline-item"><span class="timeline-dot"></span><strong><?= $message['role'] === 'teacher' ? 'Emma' : 'Você' ?> · <?= e(ui_status_label((string)$message['message_type'])) ?></strong><p><?= e(mb_strimwidth(portal_clean_text($message['content'] ?: $message['transcription'] ?: ''), 0, 180, '…')) ?></p><time><?= e(ui_date((string)$message['created_at'])) ?></time></div>
         <?php endforeach; ?>
     </div>
 </section>

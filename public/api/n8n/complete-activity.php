@@ -15,7 +15,7 @@ $studentId = trim((string)($data['student_id'] ?? ''));
 $phone = normalize_phone($data['phone'] ?? '');
 $studentActivityId = trim((string)($data['student_activity_id'] ?? ''));
 $score = learning_clamp($data['score'] ?? 0);
-$feedback = trim((string)($data['feedback'] ?? ''));
+$feedback = portal_clean_text($data['feedback'] ?? '');
 $answerText = trim((string)($data['answer_text'] ?? $data['answer'] ?? ''));
 $answerData = is_array($data['answer_data'] ?? null) ? $data['answer_data'] : [];
 $evaluation = is_array($data['evaluation'] ?? null) ? $data['evaluation'] : [];
@@ -218,6 +218,17 @@ try {
         ]
     );
 
+    $vocabularySaved = learning_sync_vocabulary(
+        $pdo,
+        $studentId,
+        learning_vocabulary_items($evaluation),
+        [
+            'source' => 'activity',
+            'level' => (string)$activity['level'],
+            'source_context' => ['student_activity_id' => $studentActivityId, 'attempt_id' => $attemptId],
+        ]
+    );
+
     $corrections = $evaluation['corrections'] ?? $evaluation['errors'] ?? [];
     $correctionsSaved = is_array($corrections)
         ? learning_sync_corrections(
@@ -249,6 +260,7 @@ try {
             'level' => $activity['level'],
             'skills_recorded' => array_keys($recordedSkills),
             'corrections_saved' => $correctionsSaved,
+            'vocabulary_saved' => count($vocabularySaved),
             'correct_answers' => $correctAnswers,
             'total_questions' => $totalQuestions,
         ]
@@ -275,6 +287,7 @@ try {
         'xp_earned' => $xp,
         'skills_recorded' => array_keys($recordedSkills),
         'corrections_saved' => $correctionsSaved,
+        'vocabulary_saved' => count($vocabularySaved),
     ], 201);
 } catch (Throwable $exception) {
     if ($pdo->inTransaction()) {

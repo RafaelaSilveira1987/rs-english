@@ -111,6 +111,405 @@ function learning_json(array $value): string
     ) ?: '{}';
 }
 
+
+function learning_vocabulary_items(array $evaluation): array
+{
+    foreach (['vocabulary', 'new_vocabulary', 'vocabulary_items', 'learned_words'] as $key) {
+        if (isset($evaluation[$key]) && is_array($evaluation[$key])) {
+            return $evaluation[$key];
+        }
+    }
+
+    return [];
+}
+
+function learning_normalize_vocabulary_word(string $word): string
+{
+    $word = trim(preg_replace('/\s+/u', ' ', $word) ?? $word);
+    $word = trim($word, " \t\n\r\0\x0B.,;:!?()[]{}\"'");
+    return mb_strtolower($word);
+}
+
+function learning_sync_vocabulary(
+    PDO $pdo,
+    string $studentId,
+    array $items,
+    array $context = []
+): array {
+    $saved = [];
+    $source = mb_strimwidth((string)($context['source'] ?? 'conversation'), 0, 30, '');
+    $sourceContext = is_array($context['source_context'] ?? null) ? $context['source_context'] : [];
+    $defaultLevel = strtoupper(trim((string)($context['level'] ?? '')));
+
+    $ignored = [
+        'a','an','the','i','you','he','she','it','we','they','am','is','are','was','were',
+        'do','does','did','to','of','in','on','at','and','or','but','my','your','his','her',
+        'this','that','these','those','yes','no','ok','okay'
+    ];
+
+    foreach (array_slice($items, 0, 8) as $item) {
+        if (is_string($item)) {
+            $item = ['word' => $item];
+        }
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $word = trim((string)($item['word'] ?? $item['term'] ?? $item['expression'] ?? ''));
+        $normalized = learning_normalize_vocabulary_word($word);
+        if ($normalized === '' || mb_strlen($normalized) < 2 || in_array($normalized, $ignored, true)) {
+            continue;
+        }
+        if (!preg_match('/[a-zA-Z]/u', $normalized)) {
+            continue;
+        }
+
+        $translation = trim((string)($item['translation'] ?? $item['translation_pt'] ?? ''));
+        $definition = trim((string)($item['definition_en'] ?? $item['definition'] ?? ''));
+        $example = trim((string)($item['example'] ?? $item['example_sentence'] ?? ''));
+        $level = strtoupper(trim((string)($item['level'] ?? $defaultLevel)));
+        $category = trim((string)($item['category'] ?? $item['topic'] ?? 'general'));
+
+        $find = $pdo->prepare('SELECT id FROM vocabulary WHERE normalized_word = :normalized_word LIMIT 1');
+        $find->execute(['normalized_word' => $normalized]);
+        $vocabularyId = (string)($find->fetchColumn() ?: '');
+
+        if ($vocabularyId === '') {
+            $query = $pdo->prepare(<<<'SQL'
+                INSERT INTO vocabulary(
+                    word, normalized_word, translation, definition_en,
+                    example, level, category
+                ) VALUES(
+                    :word, :normalized_word, NULLIF(:translation, ''),
+                    NULLIF(:definition_en, ''), NULLIF(:example, ''),
+                    NULLIF(:level, ''), NULLIF(:category, '')
+                )
+                RETURNING id
+            SQL);
+            $query->execute([
+                'word' => $word,
+                'normalized_word' => $normalized,
+                'translation' => $translation,
+                'definition_en' => $definition,
+                'example' => $example,
+                'level' => $level,
+                'category' => $category,
+            ]);
+            $vocabularyId = (string)$query->fetchColumn();
+        } else {
+            $pdo->prepare(<<<'SQL'
+                UPDATE vocabulary
+                SET translation = COALESCE(NULLIF(:translation, ''), translation),
+                    definition_en = COALESCE(NULLIF(:definition_en, ''), definition_en),
+                    example = COALESCE(NULLIF(:example, ''), example),
+                    level = COALESCE(NULLIF(:level, ''), level),
+                    category = COALESCE(NULLIF(:category, ''), category)
+                WHERE id = :id
+            SQL)->execute([
+                'translation' => $translation,
+                'definition_en' => $definition,
+                'example' => $example,
+                'level' => $level,
+                'category' => $category,
+                'id' => $vocabularyId,
+            ]);
+        }
+
+        if ($vocabularyId === '') {
+            continue;
+        }
+
+        $pdo->prepare(<<<'SQL'
+            INSERT INTO student_vocabulary(
+                student_id, vocabulary_id, status, mastery_score,
+                repetitions, correct_answers, incorrect_answers,
+                first_seen_at, last_seen_at, next_review_at,
+                interval_days, ease_factor, source, source_context
+            ) VALUES(
+                :student_id, :vocabulary_id, 'learning', 0,
+                0, 0, 0, NOW(), NOW(), NOW() + INTERVAL '1 day',
+                1, 2.50, :source, CAST(:source_context AS jsonb)
+            )
+            ON CONFLICT(student_id, vocabulary_id)
+            DO UPDATE SET
+                last_seen_at = NOW(),
+                next_review_at = CASE
+                    WHEN student_vocabulary.status = 'mastered' THEN student_vocabulary.next_review_at
+                    ELSE COALESCE(student_vocabulary.next_review_at, NOW() + INTERVAL '1 day')
+                END,
+                source = EXCLUDED.source,
+                source_context = student_vocabulary.source_context || EXCLUDED.source_context
+        SQL)->execute([
+            'student_id' => $studentId,
+            'vocabulary_id' => $vocabularyId,
+            'source' => $source,
+            'source_context' => learning_json(array_merge($sourceContext, [
+                'word' => $word,
+                'level' => $level,
+            ])),
+        ]);
+
+        $saved[] = [
+            'id' => $vocabularyId,
+            'word' => $word,
+            'normalized_word' => $normalized,
+        ];
+    }
+
+    return $saved;
+}
+
+function learning_interaction_duration(
+    PDO $pdo,
+    string $studentId,
+    string $sessionId,
+    string $channel,
+    string $messageType,
+    int $audioDurationSeconds = 0,
+    mixed $explicitDurationSeconds = null
+): int {
+    if ($messageType === 'audio' && $audioDurationSeconds > 0) {
+        return min(1800, max(1, $audioDurationSeconds));
+    }
+
+    if ($explicitDurationSeconds !== null && is_numeric($explicitDurationSeconds)) {
+        return min(900, max(15, (int)round((float)$explicitDurationSeconds)));
+    }
+
+    if (str_starts_with($channel, 'web')) {
+        return 45;
+    }
+
+    $stmt = $pdo->prepare(<<<'SQL'
+        SELECT created_at
+        FROM messages
+        WHERE student_id = :student_id
+          AND session_id = :session_id
+          AND role = 'student'
+        ORDER BY created_at DESC
+        LIMIT 1
+    SQL);
+    $stmt->execute([
+        'student_id' => $studentId,
+        'session_id' => $sessionId,
+    ]);
+    $previous = $stmt->fetchColumn();
+    if (!$previous) {
+        return 60;
+    }
+
+    $seconds = time() - (new DateTimeImmutable((string)$previous))->getTimestamp();
+    return min(300, max(30, $seconds));
+}
+
+function learning_plan_skill(string $item): string
+{
+    $text = mb_strtolower($item);
+    return match (true) {
+        str_contains($text, 'pronún') || str_contains($text, 'pronunc') || str_contains($text, 'áudio') || str_contains($text, 'audio') => 'pronunciation',
+        str_contains($text, 'ouvir') || str_contains($text, 'listening') || str_contains($text, 'compreensão oral') => 'listening',
+        str_contains($text, 'ler') || str_contains($text, 'leitura') || str_contains($text, 'reading') => 'reading',
+        str_contains($text, 'escrev') || str_contains($text, 'writing') || str_contains($text, 'texto') => 'writing',
+        str_contains($text, 'vocabul') || str_contains($text, 'palavra') || str_contains($text, 'express') => 'vocabulary',
+        str_contains($text, 'gram') || str_contains($text, 'verbo') || str_contains($text, 'tempo verbal') || str_contains($text, 'estrutura') => 'grammar',
+        str_contains($text, 'fluên') || str_contains($text, 'fluenc') => 'fluency',
+        default => 'speaking',
+    };
+}
+
+function learning_plan_activity_payload(string $item, int $week, string $level): array
+{
+    $skill = learning_plan_skill($item);
+    $instructions = match ($skill) {
+        'vocabulary' => 'Use as palavras do tema em frases próprias. Não consulte a resposta antes de tentar.',
+        'grammar' => 'Aplique a estrutura em frases verdadeiras sobre sua rotina ou seus planos.',
+        'reading' => 'Leia com atenção e responda usando somente as informações compreendidas.',
+        'listening' => 'Pratique com a Emma por áudio e registre o que você compreendeu.',
+        'writing' => 'Escreva uma resposta curta e clara. Priorize sentido antes de complexidade.',
+        'pronunciation' => 'Grave uma frase curta, ouça o modelo da Emma e repita os trechos mais difíceis.',
+        'fluency' => 'Responda sem buscar perfeição em cada palavra. Mantenha a ideia em movimento.',
+        default => 'Converse com a Emma sobre o tema e responda com suas próprias palavras.',
+    };
+
+    $prompt = match ($skill) {
+        'vocabulary' => "Tema da semana: {$item}\n\nEscreva três palavras ou expressões relacionadas e use uma delas em uma frase.",
+        'grammar' => "Foco da semana: {$item}\n\nEscreva duas frases aplicando essa estrutura em uma situação real.",
+        'reading' => "Foco da semana: {$item}\n\nPeça à Emma um texto curto do nível {$level} e responda à pergunta de compreensão.",
+        'listening' => "Foco da semana: {$item}\n\nAbra a conversa por áudio, ouça uma frase curta e explique o que entendeu.",
+        'writing' => "Foco da semana: {$item}\n\nEscreva de três a cinco frases usando suas próprias informações.",
+        'pronunciation' => "Foco da semana: {$item}\n\nAbra a prática por áudio e grave uma frase de 20 a 30 segundos.",
+        'fluency' => "Foco da semana: {$item}\n\nConverse com a Emma por pelo menos quatro turnos sobre esse assunto.",
+        default => "Foco da semana: {$item}\n\nResponda em inglês com uma frase verdadeira e continue a conversa com a Emma.",
+    };
+
+    return [
+        'title' => 'Semana ' . $week . ' · ' . mb_strimwidth($item, 0, 90, '…'),
+        'description' => 'Atividade criada a partir do plano inicial do diagnóstico.',
+        'activity_type' => $skill === 'speaking' ? 'conversation_challenge' : $skill . '_practice',
+        'skill' => $skill,
+        'instructions' => $instructions,
+        'content' => [
+            'prompt' => $prompt,
+            'plan_week' => $week,
+            'plan_item' => $item,
+            'source' => 'diagnostic_plan',
+        ],
+    ];
+}
+
+function learning_sync_plan_activities(
+    PDO $pdo,
+    string $studentId,
+    string $studyPlanId,
+    array $planData,
+    string $level,
+    ?string $startDate = null
+): int {
+    if ($studentId === '' || $studyPlanId === '') {
+        return 0;
+    }
+
+    $start = new DateTimeImmutable($startDate ?: 'today');
+    $created = 0;
+
+    for ($week = 1; $week <= 4; $week++) {
+        $key = 'week_' . $week;
+        $items = $planData[$key] ?? [];
+        if (is_string($items)) {
+            $items = [$items];
+        }
+        if (!is_array($items) || $items === []) {
+            $items = [match ($week) {
+                1 => 'Consolidar frases essenciais e rotina',
+                2 => 'Ampliar vocabulário e compreensão',
+                3 => 'Praticar passado, planos e conexão de ideias',
+                default => 'Ganhar autonomia em conversação e revisão',
+            }];
+        }
+
+        foreach (array_slice(array_values($items), 0, 3) as $index => $rawItem) {
+            $item = trim(is_array($rawItem)
+                ? (string)($rawItem['title'] ?? $rawItem['focus'] ?? $rawItem['description'] ?? '')
+                : (string)$rawItem);
+            if ($item === '') {
+                continue;
+            }
+
+            $payload = learning_plan_activity_payload($item, $week, $level);
+            $availableFrom = $start->modify('+' . (($week - 1) * 7) . ' days')->format('Y-m-d');
+            $dueDate = $start->modify('+' . (($week * 7) - 1) . ' days')->format('Y-m-d');
+
+            $activityStmt = $pdo->prepare(<<<'SQL'
+                INSERT INTO activities(
+                    title, description, activity_type, level, skill,
+                    instructions, content, active, xp_reward,
+                    estimated_minutes, generated_by
+                ) VALUES(
+                    :title, :description, :activity_type, :level, :skill,
+                    :instructions, CAST(:content AS jsonb), TRUE, 12, 10,
+                    'diagnostic_plan'
+                )
+                RETURNING id
+            SQL);
+            $activityStmt->execute([
+                'title' => $payload['title'],
+                'description' => $payload['description'],
+                'activity_type' => $payload['activity_type'],
+                'level' => $level,
+                'skill' => $payload['skill'],
+                'instructions' => $payload['instructions'],
+                'content' => learning_json($payload['content']),
+            ]);
+            $activityId = (string)$activityStmt->fetchColumn();
+            if ($activityId === '') {
+                continue;
+            }
+
+            $assign = $pdo->prepare(<<<'SQL'
+                INSERT INTO student_activities(
+                    student_id, activity_id, status, study_plan_id,
+                    plan_week, plan_item_index, available_from,
+                    due_date, assignment_source
+                ) VALUES(
+                    :student_id, :activity_id, 'pending', :study_plan_id,
+                    :plan_week, :plan_item_index, :available_from,
+                    :due_date, 'diagnostic_plan'
+                )
+                ON CONFLICT(student_id, study_plan_id, plan_week, plan_item_index)
+                WHERE study_plan_id IS NOT NULL AND plan_week IS NOT NULL AND plan_item_index IS NOT NULL
+                DO NOTHING
+                RETURNING id
+            SQL);
+            $assign->execute([
+                'student_id' => $studentId,
+                'activity_id' => $activityId,
+                'study_plan_id' => $studyPlanId,
+                'plan_week' => $week,
+                'plan_item_index' => $index + 1,
+                'available_from' => $availableFrom,
+                'due_date' => $dueDate,
+            ]);
+
+            if ($assign->fetchColumn()) {
+                $created++;
+            } else {
+                $pdo->prepare('DELETE FROM activities WHERE id = :id AND generated_by = :generated_by')
+                    ->execute(['id' => $activityId, 'generated_by' => 'diagnostic_plan']);
+            }
+        }
+    }
+
+    return $created;
+}
+
+function learning_ensure_plan_activities(PDO $pdo, string $studentId): int
+{
+    try {
+        $stmt = $pdo->prepare(<<<'SQL'
+            SELECT id, start_date, target_level, plan_data
+            FROM study_plans
+            WHERE student_id = :student_id AND status = 'active'
+            ORDER BY created_at DESC
+            LIMIT 1
+        SQL);
+        $stmt->execute(['student_id' => $studentId]);
+        $plan = $stmt->fetch();
+        if (!$plan) {
+            return 0;
+        }
+
+        $count = $pdo->prepare(<<<'SQL'
+            SELECT COUNT(*)
+            FROM student_activities
+            WHERE student_id = :student_id
+              AND study_plan_id = :study_plan_id
+        SQL);
+        $count->execute([
+            'student_id' => $studentId,
+            'study_plan_id' => $plan['id'],
+        ]);
+        if ((int)$count->fetchColumn() > 0) {
+            return 0;
+        }
+
+        $data = is_array($plan['plan_data'])
+            ? $plan['plan_data']
+            : (json_decode((string)$plan['plan_data'], true) ?: []);
+
+        return learning_sync_plan_activities(
+            $pdo,
+            $studentId,
+            (string)$plan['id'],
+            $data,
+            (string)($plan['target_level'] ?: 'A1'),
+            (string)$plan['start_date']
+        );
+    } catch (Throwable $exception) {
+        error_log('[PLAN ACTIVITIES] ' . $exception->getMessage());
+        return 0;
+    }
+}
+
 function learning_record_event(
     PDO $pdo,
     string $studentId,
@@ -649,6 +1048,139 @@ function learning_sync_corrections(
         }
     }
     return $saved;
+}
+
+
+function learning_time_breakdown(PDO $pdo, string $studentId, int $days = 0): array
+{
+    $days = max(0, min(3650, $days));
+    $dateFilter = $days > 0 ? " AND occurred_at >= NOW() - INTERVAL '{$days} days'" : '';
+    $stmt = $pdo->prepare(<<<SQL
+        SELECT
+            COALESCE(SUM(duration_seconds), 0) AS total_seconds,
+            COALESCE(SUM(duration_seconds) FILTER (
+                WHERE channel LIKE 'whatsapp%'
+            ), 0) AS whatsapp_seconds,
+            COALESCE(SUM(duration_seconds) FILTER (
+                WHERE channel LIKE 'web%'
+                   OR event_type IN ('platform_study', 'activity_completed')
+            ), 0) AS platform_seconds,
+            COALESCE(SUM(duration_seconds) FILTER (
+                WHERE channel LIKE '%voice%'
+                   OR event_type = 'voice_practice'
+                   OR COALESCE(event_data->>'message_type', '') = 'audio'
+            ), 0) AS audio_seconds,
+            COALESCE(SUM(duration_seconds) FILTER (
+                WHERE event_type = 'activity_completed'
+            ), 0) AS activity_seconds
+        FROM student_learning_events
+        WHERE student_id = :student_id{$dateFilter}
+    SQL);
+    $stmt->execute(['student_id' => $studentId]);
+    $row = $stmt->fetch() ?: [];
+
+    return [
+        'total_minutes' => (int)round(((int)($row['total_seconds'] ?? 0)) / 60),
+        'whatsapp_minutes' => (int)round(((int)($row['whatsapp_seconds'] ?? 0)) / 60),
+        'platform_minutes' => (int)round(((int)($row['platform_seconds'] ?? 0)) / 60),
+        'audio_minutes' => (int)round(((int)($row['audio_seconds'] ?? 0)) / 60),
+        'activity_minutes' => (int)round(((int)($row['activity_seconds'] ?? 0)) / 60),
+    ];
+}
+
+function learning_award_achievements(PDO $pdo, array $metrics): array
+{
+    $studentId = (string)($metrics['id'] ?? '');
+    if ($studentId === '') {
+        return [];
+    }
+
+    $criteria = [
+        'DIAGNOSTIC_COMPLETE' => ($metrics['diagnostic_status'] ?? '') === 'completed',
+        'FIRST_CONVERSATION' => (int)($metrics['messages_total'] ?? 0) > 0,
+        'FIRST_VOICE' => (float)($metrics['voice_minutes_total'] ?? 0) > 0,
+        'FIRST_ACTIVITY' => (int)($metrics['activities_completed'] ?? 0) >= 1,
+        'STREAK_3' => (int)($metrics['streak_days_real'] ?? 0) >= 3,
+        'STREAK_7' => (int)($metrics['streak_days_real'] ?? 0) >= 7,
+        'VOCAB_25' => (int)($metrics['vocabulary_mastered'] ?? 0) >= 25,
+        'VOCAB_100' => (int)($metrics['vocabulary_mastered'] ?? 0) >= 100,
+        'STUDY_60' => (int)($metrics['study_minutes_total'] ?? 0) >= 60,
+        'STUDY_300' => (int)($metrics['study_minutes_total'] ?? 0) >= 300,
+    ];
+
+    $reviewStmt = $pdo->prepare(<<<'SQL'
+        SELECT
+            COALESCE(SUM(repetitions), 0)
+            + (SELECT COUNT(*) FROM student_errors WHERE student_id = :student_id AND status <> 'learning')
+        FROM student_vocabulary
+        WHERE student_id = :student_id
+    SQL);
+    $reviewStmt->execute(['student_id' => $studentId]);
+    $criteria['REVIEW_10'] = (int)$reviewStmt->fetchColumn() >= 10;
+
+    $awarded = [];
+    $xpTotal = 0;
+
+    foreach ($criteria as $code => $eligible) {
+        if (!$eligible) {
+            continue;
+        }
+
+        $stmt = $pdo->prepare(<<<'SQL'
+            INSERT INTO student_achievements(student_id, achievement_id)
+            SELECT :student_id, id
+            FROM achievements
+            WHERE code = :code AND active = TRUE
+            ON CONFLICT(student_id, achievement_id) DO NOTHING
+            RETURNING achievement_id
+        SQL);
+        $stmt->execute([
+            'student_id' => $studentId,
+            'code' => $code,
+        ]);
+        $achievementId = $stmt->fetchColumn();
+        if (!$achievementId) {
+            continue;
+        }
+
+        $meta = $pdo->prepare('SELECT title, description, xp_reward FROM achievements WHERE id = :id');
+        $meta->execute(['id' => $achievementId]);
+        $achievement = $meta->fetch() ?: ['title' => $code, 'description' => '', 'xp_reward' => 0];
+        $xp = max(0, (int)($achievement['xp_reward'] ?? 0));
+        $xpTotal += $xp;
+        $awarded[] = [
+            'code' => $code,
+            'title' => (string)$achievement['title'],
+            'xp_reward' => $xp,
+        ];
+
+        try {
+            $pdo->prepare(<<<'SQL'
+                INSERT INTO study_events(student_id, event_type, title, description, event_data)
+                VALUES(:student_id, 'achievement', :title, :description, CAST(:event_data AS jsonb))
+            SQL)->execute([
+                'student_id' => $studentId,
+                'title' => 'Conquista desbloqueada: ' . (string)$achievement['title'],
+                'description' => (string)($achievement['description'] ?? ''),
+                'event_data' => learning_json(['code' => $code, 'xp_reward' => $xp]),
+            ]);
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    if ($xpTotal > 0) {
+        $pdo->prepare(<<<'SQL'
+            UPDATE student_profiles
+            SET xp = COALESCE(xp, 0) + :xp,
+                updated_at = NOW()
+            WHERE student_id = :student_id
+        SQL)->execute([
+            'xp' => $xpTotal,
+            'student_id' => $studentId,
+        ]);
+    }
+
+    return $awarded;
 }
 
 function learning_event_totals(PDO $pdo, string $studentId): array

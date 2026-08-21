@@ -96,7 +96,7 @@ try {
         if ($body !== false && $curlError === '' && $status >= 200 && $status < 300) {
             $evaluation = json_decode($body, true) ?: [];
             $score = isset($evaluation['score']) ? max(0, min(100, (float)$evaluation['score'])) : null;
-            $feedback = trim((string)($evaluation['feedback'] ?? ''));
+            $feedback = portal_clean_text($evaluation['feedback'] ?? '');
         }
     }
 
@@ -249,6 +249,17 @@ try {
         ]
     );
 
+    $vocabularySaved = learning_sync_vocabulary(
+        $pdo,
+        (string)$user['student_id'],
+        learning_vocabulary_items($evaluation),
+        [
+            'source' => 'activity',
+            'level' => (string)$activity['level'],
+            'source_context' => ['student_activity_id' => $studentActivityId, 'attempt_id' => (string)$attemptId],
+        ]
+    );
+
     $evaluationCorrections = $evaluation['corrections'] ?? $evaluation['errors'] ?? [];
     $correctionsSaved = is_array($evaluationCorrections)
         ? learning_sync_corrections(
@@ -280,6 +291,7 @@ try {
             'level' => $activity['level'],
             'skills_recorded' => array_keys($recordedSkills),
             'corrections_saved' => $correctionsSaved,
+            'vocabulary_saved' => count($vocabularySaved),
             'correct_answers' => $correctAnswers,
             'total_questions' => $totalQuestions,
         ]
@@ -304,6 +316,7 @@ try {
         'xp_earned' => $xp,
         'skills_recorded' => array_keys($recordedSkills),
         'corrections_saved' => $correctionsSaved,
+        'vocabulary_saved' => count($vocabularySaved),
     ], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

@@ -1,22 +1,13 @@
-# RS English v17
+# RS English v18 — Portal do aluno
 
-Versão com diagnóstico inicial mais completo e tradução somente sob demanda.
+Versão focada no ciclo real de aprendizagem do aluno:
 
-Principais entregas:
+- feedback do diagnóstico normalizado;
+- vocabulário vindo de conversas, diagnóstico e atividades;
+- plano inicial convertido em semanas e atividades;
+- áudio do WhatsApp e portal no histórico;
+- meta semanal explicável e editável;
+- tempo de estudo separado entre plataforma e WhatsApp;
+- conquistas automáticas.
 
-- oito etapas de diagnóstico adaptativo;
-- avaliação baseada em várias evidências reais;
-- perguntas sem resposta pronta ou modelo que resolva a tarefa;
-- tradução apenas quando solicitada;
-- progressão de dificuldade conforme o desempenho;
-- redução de exercícios repetitivos;
-- atualização do portal do aluno para as novas etapas;
-- todas as funcionalidades de acessos e progresso das versões anteriores mantidas.
-
-Instalação detalhada:
-
-```text
-docs/INSTALL-V17-DIAGNOSTICO-ADAPTATIVO.md
-```
-
-Não existe migration nova nesta versão.
+Instalação: `docs/INSTALL-V18-PORTAL-ALUNO.md`.

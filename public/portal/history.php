@@ -15,13 +15,34 @@ $sql = <<<'SQL'
     SELECT * FROM (
         SELECT
             m.id,
-            CASE WHEN m.role = 'teacher' THEN 'teacher_message' ELSE 'student_message' END AS event_type,
-            CASE WHEN m.role = 'teacher' THEN 'Resposta da Emma' ELSE 'Mensagem enviada' END AS title,
+            CASE
+                WHEN m.role = 'student' AND m.message_type = 'audio' THEN 'voice'
+                WHEN m.role = 'teacher' THEN 'teacher_message'
+                ELSE 'student_message'
+            END AS event_type,
+            CASE
+                WHEN m.role = 'student' AND m.message_type = 'audio' THEN 'Áudio enviado'
+                WHEN m.role = 'teacher' THEN 'Resposta da Emma'
+                ELSE 'Mensagem enviada'
+            END AS title,
             COALESCE(NULLIF(m.content, ''), m.transcription, '') AS description,
             m.message_type AS meta,
             m.created_at
         FROM messages m
         WHERE m.student_id = :student_id
+          AND NOT (
+              m.role = 'student' AND m.message_type = 'audio'
+              AND EXISTS (
+                  SELECT 1 FROM voice_conversations linked_voice
+                  WHERE linked_voice.source_message_id = m.id
+                     OR (
+                         linked_voice.student_id = m.student_id
+                         AND linked_voice.session_id IS NOT DISTINCT FROM m.session_id
+                         AND linked_voice.created_at BETWEEN m.created_at - INTERVAL '5 minutes' AND m.created_at + INTERVAL '5 minutes'
+                         AND COALESCE(linked_voice.student_transcription, '') = COALESCE(NULLIF(m.transcription, ''), NULLIF(m.content, ''), '')
+                     )
+              )
+          )
 
         UNION ALL
 
@@ -55,7 +76,11 @@ $sql = <<<'SQL'
             'voice' AS event_type,
             'Prática por áudio' AS title,
             COALESCE(vc.student_transcription, vc.teacher_text, 'Conversa por voz') AS description,
-            vc.status AS meta,
+            CASE
+                WHEN vc.student_audio_duration_seconds IS NOT NULL
+                    THEN ROUND(vc.student_audio_duration_seconds)::text || ' s'
+                ELSE COALESCE(vc.status, 'completed')
+            END AS meta,
             vc.created_at
         FROM voice_conversations vc
         WHERE vc.student_id = :student_id
@@ -85,6 +110,7 @@ $events = $stmt->fetchAll();
 
 $groups = [];
 foreach ($events as $event) {
+    $event['description'] = portal_clean_text($event['description'] ?? '');
     $dateKey = (new DateTimeImmutable((string)$event['created_at']))->format('Y-m-d');
     $groups[$dateKey][] = $event;
 }

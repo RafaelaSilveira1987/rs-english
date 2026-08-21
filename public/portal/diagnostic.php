@@ -142,7 +142,7 @@ require __DIR__ . '/../../templates/header.php';
         <div class="diagnostic-list-block">
             <h3>Pontos fortes</h3>
             <?php if ($strengths): ?>
-                <ul class="check-list"><?php foreach ($strengths as $item): ?><li><?= e((string)$item) ?></li><?php endforeach; ?></ul>
+                <ul class="check-list"><?php foreach ($strengths as $item): ?><li><?= e(portal_clean_text($item)) ?></li><?php endforeach; ?></ul>
             <?php else: ?>
                 <p class="muted">As evidências positivas aparecerão após a conclusão do diagnóstico.</p>
             <?php endif; ?>
@@ -150,7 +150,7 @@ require __DIR__ . '/../../templates/header.php';
         <div class="diagnostic-list-block">
             <h3>Prioridades</h3>
             <?php if ($weaknesses): ?>
-                <ul class="priority-list"><?php foreach ($weaknesses as $item): ?><li><?= e((string)$item) ?></li><?php endforeach; ?></ul>
+                <ul class="priority-list"><?php foreach ($weaknesses as $item): ?><li><?= e(portal_clean_text($item)) ?></li><?php endforeach; ?></ul>
             <?php else: ?>
                 <p class="muted">As prioridades serão definidas com base nas respostas.</p>
             <?php endif; ?>
@@ -164,7 +164,7 @@ require __DIR__ . '/../../templates/header.php';
         <div class="avatar">E</div>
         <div>
             <strong>Emma</strong>
-            <p><?= nl2br(e((string)($diagnostic['written_feedback'] ?? 'Seu resultado será detalhado assim que todas as etapas forem concluídas.'))) ?></p>
+            <p><?= nl2br(e(portal_clean_text($diagnostic['written_feedback'] ?? 'Seu resultado será detalhado assim que todas as etapas forem concluídas.'))) ?></p>
         </div>
     </div>
 </section>
@@ -175,7 +175,7 @@ require __DIR__ . '/../../templates/header.php';
         <?php if ($recommendations): ?>
             <div class="stack">
                 <?php foreach ($recommendations as $index => $item): ?>
-                    <div class="list-card numbered-card"><span><?= $index + 1 ?></span><div><strong><?= e((string)$item) ?></strong></div></div>
+                    <div class="list-card numbered-card"><span><?= $index + 1 ?></span><div><strong><?= e(portal_clean_text($item)) ?></strong></div></div>
                 <?php endforeach; ?>
             </div>
         <?php else: ?>
@@ -188,7 +188,7 @@ require __DIR__ . '/../../templates/header.php';
         <div class="list-card featured-card">
             <span class="badge neutral">Atividade inicial</span>
             <strong><?= e((string)($firstActivity['title'] ?? 'Prática de apresentação')) ?></strong>
-            <p><?= e((string)($firstActivity['instruction'] ?? 'Converse com a Emma e faça uma apresentação curta sobre você e sua rotina.')) ?></p>
+            <p><?= e(portal_clean_text($firstActivity['instruction'] ?? 'Converse com a Emma e faça uma apresentação curta sobre você e sua rotina.')) ?></p>
             <a class="btn btn-primary btn-sm" href="/portal/practice.php" style="margin-top:12px">Começar agora</a>
         </div>
     </section>
@@ -203,7 +203,7 @@ require __DIR__ . '/../../templates/header.php';
         ?>
             <article class="plan-week">
                 <span><?= e($label) ?></span>
-                <?php if ($items): ?><ul><?php foreach ($items as $item): ?><li><?= e((string)$item) ?></li><?php endforeach; ?></ul><?php else: ?><p>Etapas em preparação.</p><?php endif; ?>
+                <?php if ($items): ?><ul><?php foreach ($items as $item): ?><li><?= e(portal_clean_text($item)) ?></li><?php endforeach; ?></ul><?php else: ?><p>Etapas em preparação.</p><?php endif; ?>
             </article>
         <?php endforeach; ?>
     </div>

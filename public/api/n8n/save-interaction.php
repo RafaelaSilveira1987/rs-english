@@ -15,8 +15,9 @@ $data = json_input();
 $phone = normalize_phone($data['phone'] ?? '');
 $name = trim((string)($data['student_name'] ?? 'Aluno'));
 $studentMessage = trim((string)($data['student_message'] ?? ''));
-$teacherMessage = trim((string)($data['teacher_message'] ?? ''));
+$teacherMessage = portal_clean_text($data['teacher_message'] ?? '');
 $messageType = trim((string)($data['message_type'] ?? 'text'));
+$eventChannel = trim((string)($data['channel'] ?? 'whatsapp')) ?: 'whatsapp';
 $mode = conversation_mode(trim((string)($data['mode'] ?? 'conversation')));
 $topic = conversation_topic((string)($data['topic'] ?? ''));
 $evaluation = is_array($data['evaluation'] ?? null)
@@ -221,8 +222,8 @@ try {
         ");
         $query->execute([
             'student_id' => $studentId,
-            'channel' => str_starts_with((string)($data['channel'] ?? ''), 'web')
-                ? (string)$data['channel']
+            'channel' => str_starts_with($eventChannel, 'web')
+                ? $eventChannel
                 : 'whatsapp',
             'mode' => $mode,
             'topic' => $topic !== '' ? $topic : null,
@@ -241,6 +242,16 @@ try {
     }
 
     $sessionId = (string)$session['id'];
+    $audioDurationSeconds = max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0)));
+    $interactionDurationSeconds = learning_interaction_duration(
+        $pdo,
+        (string)$studentId,
+        $sessionId,
+        $eventChannel,
+        $messageType,
+        $audioDurationSeconds,
+        $data['interaction_duration_seconds'] ?? null
+    );
     $currentTurnCount = (int)($session['turn_count'] ?? 0);
     $sessionMaxTurns = conversation_max_turns(
         $session['max_turns'] ?? $maxTurns
@@ -348,98 +359,48 @@ try {
         );
     }
 
-    foreach (($evaluation['vocabulary'] ?? []) as $vocabulary) {
-        if (!is_array($vocabulary)) {
-            continue;
-        }
+    $vocabularySaved = learning_sync_vocabulary(
+        $pdo,
+        (string)$studentId,
+        learning_vocabulary_items($evaluation),
+        [
+            'source' => $mode === 'assessment' ? 'diagnostic' : 'conversation',
+            'level' => (string)($evaluation['estimated_level'] ?? $data['level'] ?? ''),
+            'source_context' => [
+                'session_id' => $sessionId,
+                'message_id' => (string)$messageId,
+                'channel' => $eventChannel,
+                'topic' => $topic,
+            ],
+        ]
+    );
 
-        $word = trim((string)($vocabulary['word'] ?? ''));
-
-        if ($word === '') {
-            continue;
-        }
-
-        $normalized = normalize_word_v104($word);
-
-        $query = $pdo->prepare("
-            SELECT id
-            FROM vocabulary
-            WHERE normalized_word = :normalized
-            LIMIT 1
-        ");
-        $query->execute(['normalized' => $normalized]);
-        $vocabularyId = $query->fetchColumn();
-
-        if (!$vocabularyId) {
-            $query = $pdo->prepare("
-                INSERT INTO vocabulary(
-                    word,
-                    normalized_word,
-                    translation,
-                    definition_en,
-                    example,
-                    level,
-                    category
-                )
-                VALUES(
-                    :word,
-                    :normalized,
-                    :translation,
-                    :definition,
-                    :example,
-                    :level,
-                    :category
-                )
-                RETURNING id
-            ");
-            $query->execute([
-                'word' => $word,
-                'normalized' => $normalized,
-                'translation' => $vocabulary['translation'] ?? null,
-                'definition' => $vocabulary['definition_en'] ?? null,
-                'example' => $vocabulary['example'] ?? null,
-                'level' => $vocabulary['level'] ?? null,
-                'category' => $vocabulary['category'] ?? null,
-            ]);
-            $vocabularyId = $query->fetchColumn();
-        }
-
-        $pdo->prepare("
-            INSERT INTO student_vocabulary(
-                student_id,
-                vocabulary_id,
-                status,
-                mastery_score,
-                repetitions,
-                correct_answers,
-                incorrect_answers,
-                first_seen_at,
-                next_review_at,
-                interval_days,
-                ease_factor
+    if ($messageType === 'audio' && !str_starts_with($eventChannel, 'web')) {
+        $pdo->prepare(<<<'SQL'
+            INSERT INTO voice_conversations(
+                student_id, channel, student_audio_duration_seconds,
+                student_transcription, teacher_text, session_id,
+                status, source_message_id
+            ) VALUES(
+                :student_id, :channel, :duration,
+                :transcription, NULLIF(:teacher_text, ''), :session_id,
+                'completed', :source_message_id
             )
-            VALUES(
-                :student_id,
-                :vocabulary_id,
-                'learning',
-                0,
-                0,
-                0,
-                0,
-                NOW(),
-                NOW() + INTERVAL '1 day',
-                1,
-                2.50
-            )
-            ON CONFLICT(student_id, vocabulary_id)
+            ON CONFLICT(source_message_id) WHERE source_message_id IS NOT NULL
             DO UPDATE SET
-                next_review_at = COALESCE(
-                    student_vocabulary.next_review_at,
-                    NOW() + INTERVAL '1 day'
-                )
-        ")->execute([
+                student_audio_duration_seconds = COALESCE(EXCLUDED.student_audio_duration_seconds, voice_conversations.student_audio_duration_seconds),
+                student_transcription = COALESCE(NULLIF(EXCLUDED.student_transcription, ''), voice_conversations.student_transcription),
+                teacher_text = COALESCE(NULLIF(EXCLUDED.teacher_text, ''), voice_conversations.teacher_text),
+                session_id = COALESCE(EXCLUDED.session_id, voice_conversations.session_id),
+                status = 'completed'
+        SQL)->execute([
             'student_id' => $studentId,
-            'vocabulary_id' => $vocabularyId,
+            'channel' => $eventChannel === 'whatsapp' ? 'whatsapp_voice' : $eventChannel,
+            'duration' => $audioDurationSeconds > 0 ? $audioDurationSeconds : null,
+            'transcription' => $studentMessage,
+            'teacher_text' => $teacherMessage,
+            'session_id' => $sessionId,
+            'source_message_id' => $messageId,
         ]);
     }
 
@@ -579,8 +540,6 @@ try {
         ? round(array_sum($recordedSkills) / count($recordedSkills), 2)
         : null;
     $eventXp = $mode === 'review' ? 8 : 5;
-    $audioDurationSeconds = max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0)));
-    $eventChannel = trim((string)($data['channel'] ?? 'whatsapp')) ?: 'whatsapp';
 
     learning_record_event(
         $pdo,
@@ -590,7 +549,7 @@ try {
         $eventChannel,
         (string)$sessionId,
         (string)$messageId,
-        $audioDurationSeconds,
+        $interactionDurationSeconds,
         $eventScore,
         $eventXp,
         [
@@ -600,9 +559,8 @@ try {
             'teacher_replied' => $teacherMessage !== '',
             'skills_recorded' => array_keys($recordedSkills),
             'corrections_saved' => $correctionsSaved,
-            'vocabulary_count' => is_array($evaluation['vocabulary'] ?? null)
-                ? count($evaluation['vocabulary'])
-                : 0,
+            'vocabulary_count' => count($vocabularySaved),
+            'duration_method' => $messageType === 'audio' ? 'audio_length' : (str_starts_with($eventChannel, 'web') ? 'web_active_time' : 'whatsapp_session_interval'),
         ]
     );
 
@@ -645,6 +603,8 @@ try {
         'telemetry' => [
             'skills_recorded' => array_keys($recordedSkills),
             'corrections_saved' => $correctionsSaved,
+            'vocabulary_saved' => count($vocabularySaved),
+            'duration_seconds' => $interactionDurationSeconds,
             'event_score' => $eventScore,
         ],
         'conversation' => $mode === 'conversation'

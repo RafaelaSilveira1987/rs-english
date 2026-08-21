@@ -48,9 +48,11 @@ $data = json_input();
 $phone = normalize_phone($data['phone'] ?? '');
 $name = trim((string)($data['student_name'] ?? 'Aluno'));
 $studentMessage = trim((string)($data['student_message'] ?? ''));
-$teacherMessage = trim((string)($data['teacher_message'] ?? ''));
+$teacherMessage = portal_clean_text($data['teacher_message'] ?? '');
 $rawMessageType = strtolower(trim((string)($data['message_type'] ?? 'text')));
 $messageType = str_contains($rawMessageType, 'audio') ? 'audio' : 'text';
+$eventChannel = trim((string)($data['channel'] ?? ($messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp')));
+if ($eventChannel === '') { $eventChannel = $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp'; }
 $diagnostic = is_array($data['diagnostic'] ?? null) ? $data['diagnostic'] : [];
 
 if ($phone === '') {
@@ -120,6 +122,7 @@ $recommendations = is_array($diagnostic['recommendations'] ?? null) ? $diagnosti
 $studyPlan = is_array($diagnostic['study_plan'] ?? null) ? $diagnostic['study_plan'] : [];
 $firstActivity = is_array($diagnostic['first_activity'] ?? null) ? $diagnostic['first_activity'] : [];
 $corrections = is_array($diagnostic['corrections'] ?? null) ? $diagnostic['corrections'] : [];
+$vocabularyItems = learning_vocabulary_items($diagnostic);
 
 /*
  * Não passe booleanos PHP diretamente no execute() do PDO PgSQL.
@@ -278,7 +281,7 @@ try {
         ");
         $query->execute([
             'student_id' => $studentId,
-            'channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+            'channel' => $eventChannel,
             'level' => $level,
         ]);
         $sessionId = $query->fetchColumn();
@@ -287,6 +290,18 @@ try {
     if (!$sessionId) {
         throw new RuntimeException('Não foi possível criar a sessão de diagnóstico.');
     }
+
+    $audioDurationSeconds = max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0)));
+    $interactionDurationSeconds = learning_interaction_duration(
+        $pdo,
+        (string)$studentId,
+        (string)$sessionId,
+        $eventChannel,
+        $messageType,
+        $audioDurationSeconds,
+        $data['interaction_duration_seconds'] ?? null
+    );
+    $studentMessageId = null;
 
     if ($studentMessage !== '') {
         $stage = 'saving_student_message';
@@ -308,6 +323,7 @@ try {
                 :content,
                 :transcription
             )
+            RETURNING id
         ");
         $query->execute([
             'session_id' => $sessionId,
@@ -316,6 +332,44 @@ try {
             'content' => $studentMessage,
             'transcription' => $messageType === 'audio' ? $studentMessage : null,
         ]);
+        $studentMessageId = $query->fetchColumn() ?: null;
+    }
+
+    if ($messageType === 'audio' && $studentMessageId) {
+        diagnostic_optional_step(
+            $pdo,
+            'sp_diagnostic_voice',
+            'áudio do diagnóstico não foi registrado no histórico de voz',
+            static function () use ($pdo, $studentId, $sessionId, $studentMessageId, $studentMessage, $teacherMessage, $audioDurationSeconds, $eventChannel): void {
+                $pdo->prepare(<<<'SQL'
+                    INSERT INTO voice_conversations(
+                        student_id, channel, student_audio_duration_seconds,
+                        student_transcription, teacher_text, session_id,
+                        status, source_message_id
+                    ) VALUES(
+                        :student_id, :channel, :duration_seconds,
+                        :transcription, NULLIF(:teacher_text, ''), :session_id,
+                        'completed', :source_message_id
+                    )
+                    ON CONFLICT (source_message_id) WHERE source_message_id IS NOT NULL
+                    DO UPDATE SET
+                        teacher_text = COALESCE(EXCLUDED.teacher_text, voice_conversations.teacher_text),
+                        student_audio_duration_seconds = GREATEST(
+                            COALESCE(voice_conversations.student_audio_duration_seconds, 0),
+                            COALESCE(EXCLUDED.student_audio_duration_seconds, 0)
+                        )
+                SQL)->execute([
+                    'student_id' => $studentId,
+                    'channel' => $eventChannel,
+                    'duration_seconds' => $audioDurationSeconds > 0 ? $audioDurationSeconds : null,
+                    'transcription' => $studentMessage,
+                    'teacher_text' => $teacherMessage,
+                    'session_id' => $sessionId,
+                    'source_message_id' => $studentMessageId,
+                ]);
+            },
+            $warnings
+        );
     }
 
     if ($teacherMessage !== '') {
@@ -344,6 +398,31 @@ try {
         ]);
     }
 
+    $vocabularySaved = [];
+    if ($vocabularyItems !== []) {
+        diagnostic_optional_step(
+            $pdo,
+            'sp_diagnostic_vocabulary',
+            'vocabulário do diagnóstico não foi sincronizado',
+            static function () use ($pdo, $studentId, $vocabularyItems, $level, $sessionId, $nextStep, &$vocabularySaved): void {
+                $vocabularySaved = learning_sync_vocabulary(
+                    $pdo,
+                    (string)$studentId,
+                    $vocabularyItems,
+                    [
+                        'source' => 'diagnostic',
+                        'level' => $level,
+                        'source_context' => [
+                            'session_id' => (string)$sessionId,
+                            'diagnostic_step' => $nextStep,
+                        ],
+                    ]
+                );
+            },
+            $warnings
+        );
+    }
+
     $diagnosticCorrectionsSaved = 0;
     if ($corrections !== []) {
         $diagnosticCorrectionsSaved = learning_sync_corrections(
@@ -351,7 +430,7 @@ try {
             (string)$studentId,
             $corrections,
             [
-                'channel' => $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+                'channel' => $eventChannel,
                 'session_id' => (string)$sessionId,
                 'event_prefix' => learning_event_key('diagnostic-correction', [
                     (string)$sessionId,
@@ -448,10 +527,10 @@ try {
             (string)$studentId,
             learning_event_key('diagnostic-step', [(string)$sessionId, (string)$nextStep]),
             'diagnostic_step',
-            $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+            $eventChannel,
             (string)$sessionId,
-            null,
-            max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0))),
+            $studentMessageId ? (string)$studentMessageId : null,
+            $interactionDurationSeconds,
             $partialSkills !== [] ? round(array_sum($partialSkills) / count($partialSkills), 2) : null,
             2,
             [
@@ -461,6 +540,8 @@ try {
                 'teaching_mode' => $teachingMode,
                 'skills_recorded' => array_keys($partialSkills),
                 'corrections_saved' => $diagnosticCorrectionsSaved,
+                'vocabulary_saved' => count($vocabularySaved),
+                'duration_method' => $messageType === 'audio' ? 'audio_length' : (str_starts_with($eventChannel, 'web') ? 'web_active_time' : 'whatsapp_session_interval'),
             ]
         );
 
@@ -479,6 +560,8 @@ try {
             'telemetry' => [
                 'skills_recorded' => array_keys($partialSkills),
                 'corrections_saved' => $diagnosticCorrectionsSaved,
+                'vocabulary_saved' => count($vocabularySaved),
+                'duration_seconds' => $interactionDurationSeconds,
             ],
             'warnings' => $warnings,
         ], 201);
@@ -755,7 +838,8 @@ try {
             $pdo,
             $studentId,
             $studyPlan,
-            $targetLevel
+            $targetLevel,
+            $level
         ): void {
             $pdo->prepare("
                 UPDATE study_plans
@@ -783,6 +867,7 @@ try {
                     'active',
                     CAST(:plan_data AS jsonb)
                 )
+                RETURNING id
             ");
             $query->execute([
                 'student_id' => $studentId,
@@ -790,6 +875,17 @@ try {
                 'target_level' => $targetLevel,
                 'plan_data' => json_encode($studyPlan, JSON_UNESCAPED_UNICODE),
             ]);
+            $studyPlanId = (string)($query->fetchColumn() ?: '');
+            if ($studyPlanId !== '') {
+                learning_sync_plan_activities(
+                    $pdo,
+                    (string)$studentId,
+                    $studyPlanId,
+                    $studyPlan,
+                    $level,
+                    (new DateTimeImmutable('today'))->format('Y-m-d')
+                );
+            }
         },
         $warnings
     );
@@ -853,10 +949,10 @@ try {
         (string)$studentId,
         learning_event_key('diagnostic-completed', [(string)$sessionId]),
         'diagnostic_completed',
-        $messageType === 'audio' ? 'whatsapp_voice' : 'whatsapp',
+        $eventChannel,
         (string)$sessionId,
-        null,
-        max(0, (int)round((float)($data['audio_duration_seconds'] ?? 0))),
+        $studentMessageId ? (string)$studentMessageId : null,
+        $interactionDurationSeconds,
         $total,
         25,
         [
@@ -865,6 +961,8 @@ try {
             'confidence' => $diagnosticConfidence,
             'skills_recorded' => array_keys($finalSkills),
             'corrections_saved' => $diagnosticCorrectionsSaved,
+            'vocabulary_saved' => count($vocabularySaved),
+            'duration_method' => $messageType === 'audio' ? 'audio_length' : (str_starts_with($eventChannel, 'web') ? 'web_active_time' : 'whatsapp_session_interval'),
         ]
     );
 

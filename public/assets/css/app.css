@@ -745,3 +745,13 @@ body:not(.login-body)>.login-page .login-box{width:min(500px,100%)}
 
 @media(max-width:1180px){.attention-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.recommendation-card{grid-template-columns:auto 1fr}.recommendation-card>.btn,.recommendation-card>.badge{grid-column:2;justify-self:start}}
 @media(max-width:760px){.recommendation-card{grid-template-columns:1fr;align-items:flex-start}.recommendation-card>.btn,.recommendation-card>.badge{grid-column:auto}.attention-grid{grid-template-columns:1fr}.attention-summary{align-items:flex-start;flex-direction:column}.filter-check{width:100%}}
+
+/* v18 — ciclo real do portal do aluno */
+.activity-group+.activity-group{margin-top:24px;padding-top:20px;border-top:1px solid var(--border)}
+.activity-card-row.is-disabled{opacity:.72;background:#f8fafc}
+.plan-week.is-future{background:#f8fafc;border-style:dashed}
+#weekly-goal-form{display:grid;grid-template-columns:repeat(3,minmax(100px,1fr)) auto minmax(100px,1fr);gap:10px;align-items:end;margin:0 0 18px;padding:14px;border:1px solid var(--border);border-radius:14px;background:#f8fbff}
+#weekly-goal-form[hidden]{display:none}
+#weekly-goal-form label{display:grid;gap:5px;color:var(--muted);font-size:10px;font-weight:800}
+#weekly-goal-form input{min-width:0}
+@media(max-width:760px){#weekly-goal-form{grid-template-columns:1fr 1fr}#weekly-goal-form button,#weekly-goal-status{grid-column:1/-1}}

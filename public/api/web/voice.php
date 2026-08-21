@@ -98,19 +98,38 @@ try{
 
     $saved=save_voice_bytes($speech['bytes'],'mp3');
 
+    $sourceMessageId = null;
+    if (!empty($teacher['session_id'])) {
+        $messageStmt = $pdo->prepare(<<<'SQL'
+            SELECT id
+            FROM messages
+            WHERE student_id = :student_id
+              AND session_id = :session_id
+              AND role = 'student'
+              AND message_type = 'audio'
+            ORDER BY created_at DESC
+            LIMIT 1
+        SQL);
+        $messageStmt->execute([
+            'student_id' => $user['student_id'],
+            'session_id' => $teacher['session_id'],
+        ]);
+        $sourceMessageId = $messageStmt->fetchColumn() ?: null;
+    }
+
     $stmt=$pdo->prepare("
         INSERT INTO voice_conversations(
             student_id,channel,
             student_audio_mime,student_audio_duration_seconds,
             student_transcription,
             teacher_text,teacher_audio_path,teacher_voice,
-            teacher_audio_format,status
+            teacher_audio_format,status,session_id,source_message_id
         )
         VALUES(
             :student_id,'web_voice',
             :mime,:duration,:transcription,
             :teacher_text,:teacher_audio_path,:teacher_voice,
-            'mp3','completed'
+            'mp3','completed',:session_id,:source_message_id
         )
         RETURNING id
     ");
@@ -122,7 +141,9 @@ try{
         'transcription'=>$transcription['text'],
         'teacher_text'=>$teacherText,
         'teacher_audio_path'=>$saved['relative'],
-        'teacher_voice'=>$speech['voice']
+        'teacher_voice'=>$speech['voice'],
+        'session_id'=>$teacher['session_id'] ?? null,
+        'source_message_id'=>$sourceMessageId
     ]);
 
     $conversationId=(string)$stmt->fetchColumn();

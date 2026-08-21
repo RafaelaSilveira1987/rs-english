@@ -82,7 +82,14 @@ require __DIR__ . '/../../templates/header.php';
     </section>
 
     <section class="panel">
-        <div class="panel-head"><div><h2>Meta desta semana</h2><p><?= e(ui_date_only((string)$m['week']['week_start'])) ?> a <?= e(ui_date_only((string)$m['week']['week_end'])) ?></p></div></div>
+        <div class="panel-head"><div><h2>Meta desta semana</h2><p><?= e(ui_date_only((string)$m['week']['week_start'])) ?> a <?= e(ui_date_only((string)$m['week']['week_end'])) ?> · <?= e((string)$m['week']['target_source_label']) ?></p></div><button class="btn btn-secondary btn-sm" type="button" id="edit-weekly-goal">Editar meta</button></div>
+        <form id="weekly-goal-form" class="filter-form" hidden>
+            <label>Minutos<input type="number" name="target_minutes" min="15" max="1000" value="<?= (int)$m['week']['target_minutes'] ?>"></label>
+            <label>Atividades<input type="number" name="target_activities" min="1" max="20" value="<?= (int)$m['week']['target_activities'] ?>"></label>
+            <label>Palavras<input type="number" name="target_words" min="3" max="100" value="<?= (int)$m['week']['target_words'] ?>"></label>
+            <button class="btn btn-primary btn-sm" type="submit">Salvar meta</button>
+            <span id="weekly-goal-status" class="label"></span>
+        </form>
         <div class="skill"><div class="skill-head"><span>Minutos registrados</span><strong><?= (int)$m['week']['completed_minutes'] ?>/<?= (int)$m['week']['target_minutes'] ?></strong></div><div class="progress"><span data-progress="<?= (float)$m['week']['minutes_pct'] ?>"></span></div></div>
         <div class="skill"><div class="skill-head"><span>Atividades concluídas</span><strong><?= (int)$m['week']['completed_activities'] ?>/<?= (int)$m['week']['target_activities'] ?></strong></div><div class="progress"><span data-progress="<?= (float)$m['week']['activities_pct'] ?>"></span></div></div>
         <div class="skill"><div class="skill-head"><span>Palavras registradas</span><strong><?= (int)$m['week']['learned_words'] ?>/<?= (int)$m['week']['target_words'] ?></strong></div><div class="progress"><span data-progress="<?= (float)$m['week']['words_pct'] ?>"></span></div></div>
@@ -104,7 +111,7 @@ require __DIR__ . '/../../templates/header.php';
 </section>
 
 <section class="cards cards-4 section-gap">
-    <article class="card metric-card"><div><div class="label">Tempo de estudo total</div><div class="metric"><?= (int)$m['study_minutes_total'] ?></div><div class="metric-sub"><?= (int)$m['study_minutes_30d'] ?> min nos últimos 30 dias</div></div><div class="metric-icon"><?= ui_icon('history') ?></div></article>
+    <article class="card metric-card"><div><div class="label">Tempo de estudo total</div><div class="metric"><?= (int)$m['study_minutes_total'] ?></div><div class="metric-sub"><?= (int)$m['study_time']['platform_minutes'] ?> min plataforma · <?= (int)$m['study_time']['whatsapp_minutes'] ?> min WhatsApp</div></div><div class="metric-icon"><?= ui_icon('history') ?></div></article>
     <article class="card metric-card"><div><div class="label">Dias ativos em 30 dias</div><div class="metric"><?= (int)$m['active_days_30d'] ?></div><div class="metric-sub"><?= (int)$m['learning_events_30d'] ?> eventos de aprendizagem</div></div><div class="metric-icon"><?= ui_icon('streak') ?></div></article>
     <article class="card metric-card"><div><div class="label">Evidências pedagógicas</div><div class="metric"><?= (int)$m['skill_evidence_count'] ?></div><div class="metric-sub">medições usadas para calcular suas competências</div></div><div class="metric-icon"><?= ui_icon('progress') ?></div></article>
     <article class="card metric-card"><div><div class="label">Erros recorrentes</div><div class="metric"><?= (int)$m['corrections_recurring'] ?></div><div class="metric-sub"><?= number_format((float)$m['corrections_resolved_rate'],0) ?>% das correções resolvidas</div></div><div class="metric-icon"><?= ui_icon('corrections') ?></div></article>
@@ -122,4 +129,29 @@ require __DIR__ . '/../../templates/header.php';
     <section class="panel"><div class="panel-head"><div><h2>Relatórios semanais</h2><p>Resumos pedagógicos salvos pela plataforma.</p></div></div><?php if(!$reports):?><div class="empty-state compact"><p>O primeiro relatório aparecerá quando houver uma semana com dados suficientes.</p></div><?php else:?><div class="stack"><?php foreach($reports as $report):?><details class="report-card"><summary><span><strong><?=e(ui_date_only((string)$report['week_start']))?> a <?=e(ui_date_only((string)$report['week_end']))?></strong><small>Gerado em <?=e(ui_date((string)$report['created_at']))?></small></span><?=ui_icon('arrow','icon-sm')?></summary><div class="report-card-body"><p><?=nl2br(e((string)($report['teacher_summary']?:'Resumo ainda não preenchido.')))?></p></div></details><?php endforeach;?></div><?php endif;?></section>
 </div>
 
+
+<section class="notice section-gap">
+    <?= ui_icon('info', 'icon-sm') ?>
+    <span><strong>Como os números são calculados:</strong> o tempo soma atividades e navegação ativa na plataforma com interações do WhatsApp. No WhatsApp, mensagens de texto usam o intervalo ativo da conversa, limitado a 5 minutos por turno; áudios usam a duração real. A média das atividades considera somente as concluídas que receberam nota. A meta padrão nasce das preferências de minutos por dia e dias por semana, mas pode ser personalizada acima.</span>
+</section>
+<script>
+(() => {
+    const button = document.getElementById('edit-weekly-goal');
+    const form = document.getElementById('weekly-goal-form');
+    const status = document.getElementById('weekly-goal-status');
+    button?.addEventListener('click', () => { form.hidden = !form.hidden; });
+    form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        status.textContent = 'Salvando...';
+        const data = Object.fromEntries(new FormData(form).entries());
+        try {
+            const response = await fetch('/api/web/weekly-goal.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Não foi possível salvar.');
+            status.textContent = 'Meta atualizada.';
+            setTimeout(() => location.reload(), 600);
+        } catch (error) { status.textContent = error.message; }
+    });
+})();
+</script>
 <?php require __DIR__ . '/../../templates/footer.php'; ?>

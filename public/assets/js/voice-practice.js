@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const shell = document.querySelector('[data-practice-mode]');
     const practiceMode = shell?.dataset.practiceMode || 'conversation';
+    let textTurnStartedAt = Date.now();
     const buttons = document.querySelectorAll('[data-tab-button]');
     const panels = document.querySelectorAll('[data-tab-panel]');
 
@@ -110,7 +111,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/web/teacher.php', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message, ...conversationSettings()})
+                body: JSON.stringify({
+                    message,
+                    ...conversationSettings(),
+                    interaction_duration_seconds: Math.max(15, Math.round((Date.now() - textTurnStartedAt) / 1000))
+                })
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || data.message || 'Erro ao conversar.');
@@ -137,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             textInput.disabled = false;
             textForm.querySelector('button')?.removeAttribute('disabled');
             textInput.focus();
+            textTurnStartedAt = Date.now();
         }
     });
 

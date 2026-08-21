@@ -4,6 +4,31 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 
+
+function portal_clean_text(mixed $value): string
+{
+    $text = (string)$value;
+    if ($text === '') {
+        return '';
+    }
+
+    // Alguns fluxos n8n podem salvar "\\n" literalmente dentro do texto.
+    // Convertemos apenas sequências de controle comuns, sem interpretar HTML.
+    $text = str_replace(
+        ['\\r\\n', '\\n', '\\r', '\\t'],
+        ["\n", "\n", "\n", ' '],
+        $text
+    );
+
+    // Remove caracteres invisíveis que podem aparecer em respostas copiadas da IA.
+    $text = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $text) ?? $text;
+    $text = preg_replace("/\r\n?|\n/u", "\n", $text) ?? $text;
+    $text = preg_replace("/[ \t]+\n/u", "\n", $text) ?? $text;
+    $text = preg_replace("/\n{3,}/u", "\n\n", $text) ?? $text;
+
+    return trim($text);
+}
+
 function portal_json(mixed $value, mixed $default = []): mixed
 {
     if (is_array($value)) {

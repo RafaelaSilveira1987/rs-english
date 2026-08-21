@@ -81,6 +81,13 @@ function progress_activity_days(PDO $pdo, string $studentId, int $days = 120): a
             FROM sessions
             WHERE student_id = :student_id
               AND created_at >= CURRENT_DATE - INTERVAL '{$days} days'
+
+            UNION
+
+            SELECT occurred_at::date AS activity_day
+            FROM student_learning_events
+            WHERE student_id = :student_id
+              AND occurred_at >= CURRENT_DATE - INTERVAL '{$days} days'
         ) d
         WHERE activity_day IS NOT NULL
         ORDER BY activity_day DESC
@@ -120,22 +127,39 @@ function progress_week_data(PDO $pdo, string $studentId): array
     $start = $weekStart->format('Y-m-d');
     $end = $weekEnd->format('Y-m-d');
 
+    $preferences = $pdo->prepare(<<<'SQL'
+        SELECT
+            COALESCE(daily_minutes, 20) AS daily_minutes,
+            COALESCE(weekly_days, 5) AS weekly_days
+        FROM student_preferences
+        WHERE student_id = :student_id
+        LIMIT 1
+    SQL);
+    $preferences->execute(['student_id' => $studentId]);
+    $pref = $preferences->fetch() ?: ['daily_minutes' => 20, 'weekly_days' => 5];
+    $dailyMinutes = max(5, min(180, (int)$pref['daily_minutes']));
+    $weeklyDays = max(1, min(7, (int)$pref['weekly_days']));
+    $profileTargets = [
+        'target_minutes' => $dailyMinutes * $weeklyDays,
+        'target_activities' => max(2, $weeklyDays),
+        'target_words' => max(5, $weeklyDays * 3),
+        'target_source' => 'profile',
+    ];
+
     $goalStmt = $pdo->prepare(<<<'SQL'
         SELECT target_minutes, target_activities, target_words,
-               completed_minutes, completed_activities, learned_words
+               completed_minutes, completed_activities, learned_words,
+               COALESCE(target_source, 'profile') AS target_source
         FROM weekly_goals
         WHERE student_id = :student_id AND week_start = :week_start
         LIMIT 1
     SQL);
     $goalStmt->execute(['student_id' => $studentId, 'week_start' => $start]);
-    $saved = $goalStmt->fetch() ?: [
-        'target_minutes' => 100,
-        'target_activities' => 4,
-        'target_words' => 20,
+    $saved = $goalStmt->fetch() ?: array_merge($profileTargets, [
         'completed_minutes' => 0,
         'completed_activities' => 0,
         'learned_words' => 0,
-    ];
+    ]);
 
     $activityStmt = $pdo->prepare(<<<'SQL'
         SELECT
@@ -181,8 +205,6 @@ function progress_week_data(PDO $pdo, string $studentId): array
     ]);
     $eventMinutes = (float)($eventMinutesStmt->fetchColumn() ?: 0);
 
-    // A telemetria da v15 é a fonte principal. Os dados antigos servem apenas
-    // como fallback quando ainda não existe evento mensurável na semana.
     $derivedMinutes = (int)round((float)$activity['minutes'] + $voiceMinutes);
     $completedMinutes = $eventMinutes > 0
         ? (int)round($eventMinutes)
@@ -192,9 +214,10 @@ function progress_week_data(PDO $pdo, string $studentId): array
         : (int)$saved['completed_activities'];
     $learnedWords = $newWords > 0 ? $newWords : (int)$saved['learned_words'];
 
-    $targetMinutes = max(1, (int)$saved['target_minutes']);
-    $targetActivities = max(1, (int)$saved['target_activities']);
-    $targetWords = max(1, (int)$saved['target_words']);
+    $targetMinutes = max(1, (int)($saved['target_minutes'] ?? $profileTargets['target_minutes']));
+    $targetActivities = max(1, (int)($saved['target_activities'] ?? $profileTargets['target_activities']));
+    $targetWords = max(1, (int)($saved['target_words'] ?? $profileTargets['target_words']));
+    $targetSource = (string)($saved['target_source'] ?? 'profile');
 
     $minutesPct = min(100, ($completedMinutes / $targetMinutes) * 100);
     $activitiesPct = min(100, ($completedActivities / $targetActivities) * 100);
@@ -207,6 +230,8 @@ function progress_week_data(PDO $pdo, string $studentId): array
         'target_minutes' => $targetMinutes,
         'target_activities' => $targetActivities,
         'target_words' => $targetWords,
+        'target_source' => $targetSource,
+        'target_source_label' => $targetSource === 'student' ? 'Personalizada por você' : 'Calculada pelo seu perfil de estudo',
         'completed_minutes' => $completedMinutes,
         'completed_activities' => $completedActivities,
         'learned_words' => $learnedWords,
@@ -217,6 +242,8 @@ function progress_week_data(PDO $pdo, string $studentId): array
         'activity_average_score' => round((float)$activity['avg_score'], 1),
         'derived_minutes' => $derivedMinutes,
         'voice_minutes' => round($voiceMinutes, 1),
+        'profile_daily_minutes' => $dailyMinutes,
+        'profile_weekly_days' => $weeklyDays,
     ];
 }
 
@@ -225,9 +252,11 @@ function progress_sync_weekly_goal(PDO $pdo, string $studentId, array $week): vo
     $stmt = $pdo->prepare(<<<'SQL'
         INSERT INTO weekly_goals(
             student_id, week_start, week_end,
+            target_minutes, target_activities, target_words, target_source,
             completed_minutes, completed_activities, learned_words
         ) VALUES(
             :student_id, :week_start, :week_end,
+            :target_minutes, :target_activities, :target_words, :target_source,
             :completed_minutes, :completed_activities, :learned_words
         )
         ON CONFLICT(student_id, week_start)
@@ -241,6 +270,10 @@ function progress_sync_weekly_goal(PDO $pdo, string $studentId, array $week): vo
         'student_id' => $studentId,
         'week_start' => $week['week_start'],
         'week_end' => $week['week_end'],
+        'target_minutes' => $week['target_minutes'],
+        'target_activities' => $week['target_activities'],
+        'target_words' => $week['target_words'],
+        'target_source' => $week['target_source'] ?? 'profile',
         'completed_minutes' => $week['completed_minutes'],
         'completed_activities' => $week['completed_activities'],
         'learned_words' => $week['learned_words'],
@@ -253,11 +286,16 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
     $profile = portal_profile($studentId);
     if (!$profile) return [];
 
+    // Garante que alunos com plano já existente também recebam as atividades semanais.
+    learning_ensure_plan_activities($pdo, $studentId);
+
     $skills = progress_skill_values($profile);
     $skillEvidence = learning_skill_summary($pdo, $studentId);
     $skillAverage = progress_skill_average($skills, $skillEvidence);
     $week = progress_week_data($pdo, $studentId);
     $learningTotals = learning_event_totals($pdo, $studentId);
+    $timeBreakdown = learning_time_breakdown($pdo, $studentId);
+    $timeBreakdown30d = learning_time_breakdown($pdo, $studentId, 30);
 
     $stmt = $pdo->prepare(<<<'SQL'
         SELECT
@@ -270,6 +308,8 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
             (SELECT COUNT(*) FROM student_activities WHERE student_id = :student_id) AS activities_total,
             (SELECT COUNT(*) FROM student_activities WHERE student_id = :student_id AND status = 'completed') AS activities_completed,
             (SELECT COUNT(*) FROM student_activities WHERE student_id = :student_id AND status = 'pending') AS activities_pending,
+            (SELECT COUNT(*) FROM student_activities WHERE student_id = :student_id AND status = 'pending' AND (available_from IS NULL OR available_from <= CURRENT_DATE)) AS activities_available,
+            (SELECT COUNT(*) FROM student_activities WHERE student_id = :student_id AND status = 'pending' AND available_from > CURRENT_DATE) AS activities_scheduled,
             (SELECT COUNT(*) FROM student_activities WHERE student_id = :student_id AND status = 'completed' AND completed_at >= NOW() - INTERVAL '7 days') AS activities_7d,
             (SELECT COALESCE(AVG(score),0) FROM student_activities WHERE student_id = :student_id AND status = 'completed' AND score IS NOT NULL) AS activity_average_score,
             (SELECT COUNT(*) FROM student_vocabulary WHERE student_id = :student_id) AS vocabulary_total,
@@ -340,9 +380,11 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
         'vocabulary_mastery_rate' => $vocabularyMasteryRate,
         'corrections_resolved' => $correctionsResolved,
         'corrections_resolved_rate' => $correctionsResolvedRate,
-        'study_minutes_total' => (int)round(((int)($learningTotals['duration_seconds_total'] ?? 0)) / 60),
+        'study_minutes_total' => (int)($timeBreakdown['total_minutes'] ?? 0),
         'study_minutes_7d' => (int)round(((int)($learningTotals['duration_seconds_7d'] ?? 0)) / 60),
-        'study_minutes_30d' => (int)round(((int)($learningTotals['duration_seconds_30d'] ?? 0)) / 60),
+        'study_minutes_30d' => (int)($timeBreakdown30d['total_minutes'] ?? 0),
+        'study_time' => $timeBreakdown,
+        'study_time_30d' => $timeBreakdown30d,
         'active_days_30d' => (int)($learningTotals['active_days_30d'] ?? 0),
         'learning_events_total' => (int)($learningTotals['events_total'] ?? 0),
         'learning_events_30d' => (int)($learningTotals['events_30d'] ?? 0),
@@ -367,6 +409,7 @@ function progress_student_metrics(string $studentId, bool $sync = false): array
             'student_id' => $studentId,
         ]);
         progress_capture_snapshot($metrics);
+        learning_award_achievements($pdo, $metrics);
     }
 
     return $metrics;
@@ -673,7 +716,10 @@ function progress_engagement_class(string $status): string
 function progress_refresh_after_event(string $studentId): void
 {
     try {
-        progress_student_metrics($studentId, true);
+        $metrics = progress_student_metrics($studentId, true);
+        if ($metrics !== []) {
+            learning_award_achievements(db(), $metrics);
+        }
     } catch (Throwable $e) {
         error_log('[PROGRESS REFRESH] ' . $e->getMessage());
     }

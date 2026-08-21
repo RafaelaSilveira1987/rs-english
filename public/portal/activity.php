@@ -28,6 +28,9 @@ $stmt = $pdo->prepare(<<<'SQL'
         sa.answer_text,
         sa.answer_data,
         sa.feedback,
+        sa.plan_week,
+        sa.available_from,
+        sa.due_date,
         a.title,
         a.description,
         a.activity_type,
@@ -54,6 +57,16 @@ if (!$activity) {
 $content = portal_json($activity['content'] ?? null, []);
 $options = portal_json($content['options'] ?? [], []);
 $completed = $activity['status'] === 'completed';
+$scheduled = !$completed && !empty($activity['available_from']) && strtotime((string)$activity['available_from']) > strtotime('today');
+
+if ($scheduled) {
+    $pageTitle = 'Atividade programada';
+    $pageSubtitle = 'Esta etapa será liberada conforme a sequência do seu plano.';
+    require __DIR__ . '/../../templates/header.php';
+    echo '<section class="panel"><div class="empty-state"><div class="empty-state-icon">'.ui_icon('plan').'</div><h3>Atividade ainda não liberada</h3><p>Ela estará disponível em '.e(ui_date_only((string)$activity['available_from'])).'.</p><a class="btn btn-primary btn-sm" href="/portal/activities.php">Voltar ao plano</a></div></section>';
+    require __DIR__ . '/../../templates/footer.php';
+    exit;
+}
 
 if (!$completed && empty($activity['started_at'])) {
     $pdo->prepare('UPDATE student_activities SET started_at = NOW() WHERE id = :id')->execute(['id' => $id]);
@@ -76,20 +89,20 @@ require __DIR__ . '/../../templates/header.php';
                         <span class="badge neutral"><?= (int)$activity['xp_reward'] ?> XP</span>
                     </div>
                     <h2><?= e((string)$activity['title']) ?></h2>
-                    <p><?= e((string)($activity['description'] ?? '')) ?></p>
+                    <p><?= e(portal_clean_text($activity['description'] ?? '')) ?></p>
                 </div>
                 <span class="badge <?= e(ui_status_class((string)$activity['status'])) ?>"><?= e(ui_status_label((string)$activity['status'])) ?></span>
             </div>
 
             <div class="activity-instructions">
                 <span><?= ui_icon('target', 'icon-sm') ?></span>
-                <div><strong>Instruções</strong><p><?= nl2br(e((string)($activity['instructions'] ?: 'Responda da melhor forma possível.'))) ?></p></div>
+                <div><strong>Instruções</strong><p><?= nl2br(e(portal_clean_text($activity['instructions'] ?: 'Responda da melhor forma possível.'))) ?></p></div>
             </div>
 
             <?php if (!empty($content['prompt'])): ?>
-                <div class="activity-prompt"><?= nl2br(e((string)$content['prompt'])) ?></div>
+                <div class="activity-prompt"><?= nl2br(e(portal_clean_text($content['prompt']))) ?></div>
             <?php elseif (!empty($content['question'])): ?>
-                <div class="activity-prompt"><?= nl2br(e((string)$content['question'])) ?></div>
+                <div class="activity-prompt"><?= nl2br(e(portal_clean_text($content['question']))) ?></div>
             <?php endif; ?>
 
             <?php if ($completed): ?>
@@ -103,7 +116,7 @@ require __DIR__ . '/../../templates/header.php';
                         <strong>Sua resposta</strong>
                         <p><?= nl2br(e((string)($activity['answer_text'] ?: 'Resposta registrada.'))) ?></p>
                         <strong>Feedback</strong>
-                        <p><?= nl2br(e((string)($activity['feedback'] ?: 'Atividade concluída com sucesso.'))) ?></p>
+                        <p><?= nl2br(e(portal_clean_text($activity['feedback'] ?: 'Atividade concluída com sucesso.'))) ?></p>
                     </div>
                 </div>
                 <div class="form-actions"><a class="btn btn-primary" href="/portal/activities.php">Voltar às atividades</a><a class="btn btn-secondary" href="/portal/practice.php">Praticar com Emma</a></div>
@@ -151,6 +164,7 @@ require __DIR__ . '/../../templates/header.php';
 </div>
 
 <script>
+const activityOpenedAt = Date.now();
 document.getElementById('activity-answer-form')?.addEventListener('submit', async function (event) {
     event.preventDefault();
     const button = this.querySelector('button[type="submit"]');
@@ -168,7 +182,11 @@ document.getElementById('activity-answer-form')?.addEventListener('submit', asyn
         const response = await fetch('/api/web/activity-submit.php', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({student_activity_id: this.dataset.activityId, answer})
+            body: JSON.stringify({
+                student_activity_id: this.dataset.activityId,
+                answer,
+                duration_seconds: Math.max(15, Math.round((Date.now() - activityOpenedAt) / 1000))
+            })
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a atividade.');

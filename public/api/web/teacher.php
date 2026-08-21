@@ -17,6 +17,7 @@ $topic=trim((string)($data['topic'] ?? ($mode==='diagnostic'?'initial_diagnostic
 $style=trim((string)($data['style'] ?? 'guided'));
 $correctionMode=trim((string)($data['correction_mode'] ?? 'balanced'));
 $maxTurns=max(4,min(30,(int)($data['max_turns'] ?? 10)));
+$interactionDuration=max(15,min(900,(int)round((float)($data['interaction_duration_seconds'] ?? 45))));
 
 if($message===''){
     http_response_code(422);
@@ -45,7 +46,8 @@ $payload=[
         'style'=>$style,
         'max_turns'=>$maxTurns
     ],
-    'correction_mode'=>$correctionMode
+    'correction_mode'=>$correctionMode,
+    'interaction_duration_seconds'=>$interactionDuration
 ];
 
 $ch=curl_init($url);
