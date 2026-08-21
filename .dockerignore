@@ -1,5 +1,11 @@
-</main>
-</div>
-<script src="/assets/js/app.js?v=11.0"></script>
-</body>
-</html>
+.git
+.github
+.gitignore
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+*.zip
+node_modules
